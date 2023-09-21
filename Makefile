@@ -1,5 +1,5 @@
-STB_INCLUDE_PATH = ./libraries/stb
-CFLAGS = -std=c++17 -O2 -I$(STB_INCLUDE_PATH)
+IDIR = ./include/
+CFLAGS = -std=c++17 -O3 -I$(IDIR)
 LDFLAGS = -lglfw -lvulkan -ldl -lpthread -lX11 -lXxf86vm -lXrandr -lXi
 EXEC = renderer # Executable name
 
