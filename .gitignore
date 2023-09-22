@@ -1,2 +1,11 @@
+# compiled shaders
 *.spv
+
+# compile output
 renderer
+*.o
+compile_commands.json
+.sconsign.dblite
+
+# clang
+.cache
