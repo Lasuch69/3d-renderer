@@ -8,12 +8,18 @@ const uint32_t HEIGHT = 600;
 
 int main() {
 	try {
+		glfwInit();
+		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+		GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
+
 		VulkanContext *context = new VulkanContext;
 
-		context->createWindow(WIDTH, HEIGHT, "Vulkan");
-		context->initialize();
+		context->initWindow(window);
 
-		while (!glfwWindowShouldClose(context->getWindow())) {
+		context->init();
+
+		while (!glfwWindowShouldClose(window)) {
 			glfwPollEvents();
 			context->drawFrame();
 		}

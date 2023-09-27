@@ -16,6 +16,22 @@
 #include <string>
 #include <vector>
 
+const int MAX_FRAMES_IN_FLIGHT = 2;
+
+const std::vector<const char *> validationLayers = {
+	"VK_LAYER_KHRONOS_validation"
+};
+
+const std::vector<const char *> deviceExtensions = {
+	VK_KHR_SWAPCHAIN_EXTENSION_NAME
+};
+
+#ifdef NDEBUG
+const bool enableValidationLayers = false;
+#else
+const bool enableValidationLayers = true;
+#endif
+
 struct QueueFamilyIndices {
 	std::optional<uint32_t> graphicsFamily;
 	std::optional<uint32_t> presentFamily;
@@ -91,27 +107,8 @@ struct hash<Vertex> {
 
 class VulkanContext {
 private:
-	const int MAX_FRAMES_IN_FLIGHT = 2;
-
-	const std::vector<const char *> validationLayers = {
-		"VK_LAYER_KHRONOS_validation"
-	};
-
-	const std::vector<const char *> deviceExtensions = {
-		VK_KHR_SWAPCHAIN_EXTENSION_NAME
-	};
-
-#ifdef NDEBUG
-	const bool enableValidationLayers = false;
-#else
-	const bool enableValidationLayers = true;
-#endif
-
-	GLFWwindow *window;
-
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debugMessenger;
-	VkSurfaceKHR surface;
 
 	VkPhysicalDevice physicalDevice = VK_NULL_HANDLE;
 	VkDevice device;
@@ -119,19 +116,33 @@ private:
 	VkQueue graphicsQueue;
 	VkQueue presentQueue;
 
-	VkSwapchainKHR swapChain;
-	std::vector<VkImage> swapChainImages;
-	VkFormat swapChainImageFormat;
-	VkExtent2D swapChainExtent;
-	std::vector<VkImageView> swapChainImageViews;
-	std::vector<VkFramebuffer> swapChainFramebuffers;
+	typedef struct {
+		VkImage image;
+		VkImageView view;
+		VkFramebuffer framebuffer;
+	} SwapChainImageResource;
 
-	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_1_BIT;
+	struct Window {
+		std::vector<SwapChainImageResource> swapchainImages;
+		VkSwapchainKHR swapchain = VK_NULL_HANDLE;
+		VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
+		VkExtent2D swapchainExtent;
+		VkSurfaceKHR surface = VK_NULL_HANDLE;
+		VkRenderPass renderPass = VK_NULL_HANDLE;
+		GLFWwindow *glfwWindow = nullptr;
+	};
+
+	Window window;
+	VkFormat format;
+	VkColorSpaceKHR colorSpace;
+	uint32_t swapchainImageCount = 0;
+
+	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_4_BIT;
+
 	VkImage colorImage;
 	VkDeviceMemory colorImageMemory;
 	VkImageView colorImageView;
 
-	VkRenderPass renderPass;
 	VkDescriptorSetLayout descriptorSetLayout;
 	VkPipelineLayout pipelineLayout;
 	VkPipeline graphicsPipeline;
@@ -172,19 +183,17 @@ private:
 	bool framebufferResized = false;
 
 	void createInstance();
-	void setupDebugMessenger();
-	void createSurface();
+
 	void pickPhysicalDevice();
 	void createLogicalDevice();
-	void createSwapChain();
-	void createImageViews();
-	void createRenderPass();
+
+	void createSwapChain(Window *p_window);
+	void cleanupSwapChain(Window *p_window);
+	void recreateSwapChain(Window *p_window);
+
 	void createDescriptorSetLayout();
 	void createGraphicsPipeline();
 	void createCommandPool();
-	void createColorResources();
-	void createDepthResources();
-	void createFramebuffers();
 	void createTextureImage();
 	void createTextureImageView();
 	void createTextureSampler();
@@ -197,19 +206,13 @@ private:
 	void createCommandBuffers();
 	void createSyncObjects();
 
-	void cleanupSwapChain();
 	void cleanup();
-	void recreateSwapChain();
 
 	bool checkValidationLayerSupport();
 	std::vector<const char *> getRequiredExtensions();
 
-	void populateDebugMessengerCreateInfo(VkDebugUtilsMessengerCreateInfoEXT &createInfo);
-
 	bool isDeviceSuitable(VkPhysicalDevice device);
 	bool checkDeviceExtensionSupport(VkPhysicalDevice device);
-
-	VkSampleCountFlagBits getMaxUsableSampleCount();
 
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 
@@ -259,15 +262,15 @@ private:
 	static std::vector<char> readFile(const std::string &filename);
 
 public:
-	void createWindow(int width, int height, const char *title);
-	void initialize();
+	void init();
+
+	void initWindow(GLFWwindow *p_window);
 
 	void drawFrame();
 
-	GLFWwindow *getWindow() { return window; }
 	VkDevice getDevice() { return device; }
 
-	VulkanContext() {}
+	VulkanContext();
 	~VulkanContext();
 };
 
