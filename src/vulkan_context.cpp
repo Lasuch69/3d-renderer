@@ -1,9 +1,6 @@
 #define TINYOBJLOADER_IMPLEMENTATION
 #include <tiny_obj/tiny_obj_loader.h>
 
-#define STB_IMAGE_IMPLEMENTATION
-#include <stb/stb_image.h>
-
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -17,6 +14,8 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
+
+#include "image.h"
 
 #include "vulkan_context.h"
 
@@ -44,8 +43,6 @@ void VulkanContext::init() {
 	createGraphicsPipeline();
 	createCommandPool();
 	createTextureImage();
-	createTextureImageView();
-	createTextureSampler();
 	loadModel();
 	createVertexBuffer();
 	createIndexBuffer();
@@ -709,15 +706,17 @@ bool VulkanContext::hasStencilComponent(VkFormat format) {
 }
 
 void VulkanContext::createTextureImage() {
-	int texWidth, texHeight, texChannels;
-	stbi_uc *pixels = stbi_load(TEXTURE_PATH.c_str(), &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
-	VkDeviceSize imageSize = texWidth * texHeight * 4;
+	Image *image = Image::load(TEXTURE_PATH);
 
-	mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
-
-	if (!pixels) {
+	if (!image) {
 		throw std::runtime_error("failed to load texture image!");
 	}
+
+	int texWidth = image->get_width();
+	int texHeight = image->get_height();
+	VkDeviceSize imageSize = texWidth * texHeight * image->get_pixel_size();
+
+	mipLevels = static_cast<uint32_t>(std::floor(std::log2(std::max(texWidth, texHeight)))) + 1;
 
 	VkBuffer stagingBuffer;
 	VkDeviceMemory stagingBufferMemory;
@@ -725,10 +724,10 @@ void VulkanContext::createTextureImage() {
 
 	void *data;
 	vkMapMemory(device, stagingBufferMemory, 0, imageSize, 0, &data);
-	memcpy(data, pixels, static_cast<size_t>(imageSize));
+	memcpy(data, image->get_data().data(), static_cast<size_t>(imageSize));
 	vkUnmapMemory(device, stagingBufferMemory);
 
-	stbi_image_free(pixels);
+	free(image);
 
 	createImage(texWidth, texHeight, mipLevels, VK_SAMPLE_COUNT_1_BIT, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_TILING_OPTIMAL, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, textureImage, textureImageMemory);
 
@@ -740,13 +739,9 @@ void VulkanContext::createTextureImage() {
 
 	vkDestroyBuffer(device, stagingBuffer, nullptr);
 	vkFreeMemory(device, stagingBufferMemory, nullptr);
-}
 
-void VulkanContext::createTextureImageView() {
 	textureImageView = createImageView(textureImage, VK_FORMAT_R8G8B8A8_SRGB, VK_IMAGE_ASPECT_COLOR_BIT, mipLevels);
-}
 
-void VulkanContext::createTextureSampler() {
 	VkPhysicalDeviceProperties properties{};
 	vkGetPhysicalDeviceProperties(physicalDevice, &properties);
 

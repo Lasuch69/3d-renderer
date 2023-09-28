@@ -195,8 +195,6 @@ private:
 	void createGraphicsPipeline();
 	void createCommandPool();
 	void createTextureImage();
-	void createTextureImageView();
-	void createTextureSampler();
 	void loadModel();
 	void createVertexBuffer();
 	void createIndexBuffer();
