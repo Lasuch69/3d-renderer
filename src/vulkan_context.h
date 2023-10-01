@@ -12,8 +12,6 @@
 
 #include <vma/vk_mem_alloc.h>
 
-#include <GLFW/glfw3.h>
-
 #include <optional>
 #include <string>
 #include <vector>
@@ -130,10 +128,11 @@ private:
 		std::vector<SwapChainImageResource> swapchainImages;
 		VkSwapchainKHR swapchain = VK_NULL_HANDLE;
 		VkPresentModeKHR presentMode = VK_PRESENT_MODE_FIFO_KHR;
-		VkExtent2D swapchainExtent;
 		VkSurfaceKHR surface = VK_NULL_HANDLE;
 		VkRenderPass renderPass = VK_NULL_HANDLE;
-		GLFWwindow *glfwWindow = nullptr;
+		int width = 0;
+		int height = 0;
+		VkExtent2D swapchainExtent;
 	};
 
 	Window window;
@@ -186,7 +185,7 @@ private:
 
 	bool framebufferResized = false;
 
-	void createInstance();
+	void createInstance(std::vector<const char *> p_extensions);
 
 	void pickPhysicalDevice();
 	void createLogicalDevice();
@@ -210,10 +209,7 @@ private:
 	void createCommandBuffers();
 	void createSyncObjects();
 
-	void cleanup();
-
 	bool checkValidationLayerSupport();
-	std::vector<const char *> getRequiredExtensions();
 
 	bool isDeviceSuitable(VkPhysicalDevice device);
 	bool checkDeviceExtensionSupport(VkPhysicalDevice device);
@@ -223,7 +219,7 @@ private:
 	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
 	VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats);
 	VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR> &availablePresentModes);
-	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities);
+	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities, int width, int height);
 
 	VkFormat findSupportedFormat(const std::vector<VkFormat> &candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 	VkFormat findDepthFormat();
@@ -247,9 +243,6 @@ private:
 	VkShaderModule createShaderModule(const std::vector<char> &code);
 	static std::vector<char> readFile(const std::string &filename);
 
-	// Callbacks
-
-	static void framebufferResizeCallback(GLFWwindow *window, int width, int height);
 	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 			VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 			VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -257,13 +250,18 @@ private:
 			void *pUserData);
 
 public:
+	void windowCreate(int p_width, int p_height, VkSurfaceKHR &p_surface);
+	void windowResize(int p_width, int p_height);
+
 	void init();
-	void initWindow(GLFWwindow *p_window);
 	void drawFrame();
 
+	VkInstance getInstance() { return instance; }
 	VkDevice getDevice() { return device; }
 
-	VulkanContext();
+	VulkanContext() {}
+	VulkanContext(std::vector<const char *> p_extensions);
+
 	~VulkanContext();
 };
 

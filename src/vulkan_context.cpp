@@ -41,7 +41,7 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 	}
 }
 
-void VulkanContext::createInstance() {
+void VulkanContext::createInstance(std::vector<const char *> p_extensions) {
 	if (enableValidationLayers && !checkValidationLayerSupport()) {
 		throw std::runtime_error("validation layers requested, but not available!");
 	}
@@ -58,9 +58,8 @@ void VulkanContext::createInstance() {
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
 	createInfo.pApplicationInfo = &appInfo;
 
-	auto extensions = getRequiredExtensions();
-	createInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
-	createInfo.ppEnabledExtensionNames = extensions.data();
+	createInfo.enabledExtensionCount = static_cast<uint32_t>(p_extensions.size());
+	createInfo.ppEnabledExtensionNames = p_extensions.data();
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
 	if (enableValidationLayers) {
@@ -108,21 +107,22 @@ void VulkanContext::init() {
 	createSyncObjects();
 }
 
-void VulkanContext::initWindow(GLFWwindow *p_window) {
-	glfwSetWindowUserPointer(p_window, this);
-	glfwSetFramebufferSizeCallback(p_window, framebufferResizeCallback);
-
-	VkSurfaceKHR surface;
-	glfwCreateWindowSurface(instance, p_window, nullptr, &surface);
-
-	window.glfwWindow = p_window;
-	window.surface = surface;
+void VulkanContext::windowCreate(int p_width, int p_height, VkSurfaceKHR &p_surface) {
+	window.surface = p_surface;
+	window.width = p_width;
+	window.height = p_height;
 
 	pickPhysicalDevice();
 	createLogicalDevice();
 	createAllocator();
 
 	createSwapChain(&window);
+}
+
+void VulkanContext::windowResize(int p_width, int p_height) {
+	framebufferResized = true;
+	window.width = p_width;
+	window.height = p_height;
 }
 
 void VulkanContext::drawFrame() {
@@ -187,52 +187,6 @@ void VulkanContext::drawFrame() {
 	}
 
 	currentFrame = (currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
-}
-
-void VulkanContext::cleanup() {
-	cleanupSwapChain(&window);
-
-	vkDestroyPipeline(device, graphicsPipeline, nullptr);
-	vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
-	vkDestroyRenderPass(device, window.renderPass, nullptr);
-
-	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-		vmaDestroyBuffer(allocator, uniformBuffers[i], uniformAllocs[i]);
-	}
-
-	vkDestroyDescriptorPool(device, descriptorPool, nullptr);
-
-	vkDestroySampler(device, textureSampler, nullptr);
-	vkDestroyImageView(device, textureImageView, nullptr);
-
-	vmaDestroyImage(allocator, textureImage, textureImageAlloc);
-
-	vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
-
-	vmaDestroyBuffer(allocator, indexBuffer, indexAlloc);
-	vmaDestroyBuffer(allocator, vertexBuffer, vertexAlloc);
-
-	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-		vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
-		vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
-		vkDestroyFence(device, inFlightFences[i], nullptr);
-	}
-
-	vkDestroyCommandPool(device, commandPool, nullptr);
-
-	vkDestroyDevice(device, nullptr);
-
-	if (enableValidationLayers) {
-		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
-	}
-
-	vmaDestroyAllocator(allocator);
-	vkDestroySurfaceKHR(instance, window.surface, nullptr);
-	vkDestroyInstance(instance, nullptr);
-
-	glfwDestroyWindow(window.glfwWindow);
-
-	glfwTerminate();
 }
 
 void VulkanContext::pickPhysicalDevice() {
@@ -318,7 +272,7 @@ void VulkanContext::createSwapChain(Window *p_window) {
 
 	VkSurfaceFormatKHR surfaceFormat = chooseSwapSurfaceFormat(swapChainSupport.formats);
 	VkPresentModeKHR presentMode = chooseSwapPresentMode(swapChainSupport.presentModes);
-	VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities);
+	VkExtent2D extent = chooseSwapExtent(swapChainSupport.capabilities, p_window->width, p_window->height);
 
 	format = surfaceFormat.format;
 	colorSpace = surfaceFormat.colorSpace;
@@ -505,12 +459,12 @@ void VulkanContext::cleanupSwapChain(Window *p_window) {
 }
 
 void VulkanContext::recreateSwapChain(Window *p_window) {
-	int width = 0, height = 0;
-	glfwGetFramebufferSize(p_window->glfwWindow, &width, &height);
+	int width = p_window->width;
+	int height = p_window->height;
 
 	while (width == 0 || height == 0) {
-		glfwGetFramebufferSize(p_window->glfwWindow, &width, &height);
-		glfwWaitEvents();
+		width = p_window->width;
+		height = p_window->height;
 	}
 
 	vkDeviceWaitIdle(device);
@@ -1322,13 +1276,10 @@ VkPresentModeKHR VulkanContext::chooseSwapPresentMode(const std::vector<VkPresen
 	return VK_PRESENT_MODE_FIFO_KHR;
 }
 
-VkExtent2D VulkanContext::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities) {
+VkExtent2D VulkanContext::chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities, int width, int height) {
 	if (capabilities.currentExtent.width != std::numeric_limits<uint32_t>::max()) {
 		return capabilities.currentExtent;
 	} else {
-		int width, height;
-		glfwGetFramebufferSize(window.glfwWindow, &width, &height);
-
 		VkExtent2D actualExtent = {
 			static_cast<uint32_t>(width),
 			static_cast<uint32_t>(height)
@@ -1430,20 +1381,6 @@ QueueFamilyIndices VulkanContext::findQueueFamilies(VkPhysicalDevice device) {
 	return indices;
 }
 
-std::vector<const char *> VulkanContext::getRequiredExtensions() {
-	uint32_t glfwExtensionCount = 0;
-	const char **glfwExtensions;
-	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-	std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
-
-	if (enableValidationLayers) {
-		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-	}
-
-	return extensions;
-}
-
 bool VulkanContext::checkValidationLayerSupport() {
 	uint32_t layerCount;
 	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
@@ -1487,11 +1424,6 @@ std::vector<char> VulkanContext::readFile(const std::string &filename) {
 	return buffer;
 }
 
-void VulkanContext::framebufferResizeCallback(GLFWwindow *window, int width, int height) {
-	auto app = reinterpret_cast<VulkanContext *>(glfwGetWindowUserPointer(window));
-	app->framebufferResized = true;
-}
-
 VKAPI_ATTR VkBool32 VKAPI_CALL VulkanContext::debugCallback(
 		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 		VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -1502,10 +1434,51 @@ VKAPI_ATTR VkBool32 VKAPI_CALL VulkanContext::debugCallback(
 	return VK_FALSE;
 }
 
-VulkanContext::VulkanContext() {
-	createInstance();
+VulkanContext::VulkanContext(std::vector<const char *> p_extensions) {
+	if (enableValidationLayers) {
+		p_extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
+	}
+
+	createInstance(p_extensions);
 }
 
 VulkanContext::~VulkanContext() {
-	cleanup();
+	cleanupSwapChain(&window);
+
+	vkDestroyPipeline(device, graphicsPipeline, nullptr);
+	vkDestroyPipelineLayout(device, pipelineLayout, nullptr);
+	vkDestroyRenderPass(device, window.renderPass, nullptr);
+
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		vmaDestroyBuffer(allocator, uniformBuffers[i], uniformAllocs[i]);
+	}
+
+	vkDestroyDescriptorPool(device, descriptorPool, nullptr);
+
+	vkDestroySampler(device, textureSampler, nullptr);
+	vkDestroyImageView(device, textureImageView, nullptr);
+
+	vmaDestroyImage(allocator, textureImage, textureImageAlloc);
+
+	vkDestroyDescriptorSetLayout(device, descriptorSetLayout, nullptr);
+
+	vmaDestroyBuffer(allocator, indexBuffer, indexAlloc);
+	vmaDestroyBuffer(allocator, vertexBuffer, vertexAlloc);
+
+	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		vkDestroySemaphore(device, renderFinishedSemaphores[i], nullptr);
+		vkDestroySemaphore(device, imageAvailableSemaphores[i], nullptr);
+		vkDestroyFence(device, inFlightFences[i], nullptr);
+	}
+
+	vkDestroyCommandPool(device, commandPool, nullptr);
+
+	vkDestroyDevice(device, nullptr);
+
+	if (enableValidationLayers) {
+		DestroyDebugUtilsMessengerEXT(instance, debugMessenger, nullptr);
+	}
+
+	vmaDestroyAllocator(allocator);
+	vkDestroyInstance(instance, nullptr);
 }
