@@ -10,6 +10,8 @@
 
 #include <vulkan/vulkan.h>
 
+#include <vma/vk_mem_alloc.h>
+
 #include <GLFW/glfw3.h>
 
 #include <optional>
@@ -107,6 +109,8 @@ struct hash<Vertex> {
 
 class VulkanContext {
 private:
+	VmaAllocator allocator;
+
 	VkInstance instance;
 	VkDebugUtilsMessengerEXT debugMessenger;
 
@@ -140,7 +144,7 @@ private:
 	VkSampleCountFlagBits msaaSamples = VK_SAMPLE_COUNT_4_BIT;
 
 	VkImage colorImage;
-	VkDeviceMemory colorImageMemory;
+	VmaAllocation colorImageAlloc;
 	VkImageView colorImageView;
 
 	VkDescriptorSetLayout descriptorSetLayout;
@@ -150,25 +154,25 @@ private:
 	VkCommandPool commandPool;
 
 	VkImage depthImage;
-	VkDeviceMemory depthImageMemory;
+	VmaAllocation depthImageAlloc;
 	VkImageView depthImageView;
 
 	uint32_t mipLevels;
 	VkImage textureImage;
-	VkDeviceMemory textureImageMemory;
+	VmaAllocation textureImageAlloc;
 	VkImageView textureImageView;
 	VkSampler textureSampler;
 
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
 	VkBuffer vertexBuffer;
-	VkDeviceMemory vertexBufferMemory;
+	VmaAllocation vertexAlloc;
 	VkBuffer indexBuffer;
-	VkDeviceMemory indexBufferMemory;
+	VmaAllocation indexAlloc;
 
 	std::vector<VkBuffer> uniformBuffers;
-	std::vector<VkDeviceMemory> uniformBuffersMemory;
-	std::vector<void *> uniformBuffersMapped;
+	std::vector<VmaAllocation> uniformAllocs;
+	std::vector<VmaAllocationInfo> uniformAllocInfos;
 
 	VkDescriptorPool descriptorPool;
 	std::vector<VkDescriptorSet> descriptorSets;
@@ -186,6 +190,8 @@ private:
 
 	void pickPhysicalDevice();
 	void createLogicalDevice();
+
+	void createAllocator();
 
 	void createSwapChain(Window *p_window);
 	void cleanupSwapChain(Window *p_window);
@@ -215,40 +221,33 @@ private:
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice device);
 
 	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice device);
-
 	VkSurfaceFormatKHR chooseSwapSurfaceFormat(const std::vector<VkSurfaceFormatKHR> &availableFormats);
-
 	VkPresentModeKHR chooseSwapPresentMode(const std::vector<VkPresentModeKHR> &availablePresentModes);
-
 	VkExtent2D chooseSwapExtent(const VkSurfaceCapabilitiesKHR &capabilities);
 
 	VkFormat findSupportedFormat(const std::vector<VkFormat> &candidates, VkImageTiling tiling, VkFormatFeatureFlags features);
 	VkFormat findDepthFormat();
 
-	bool hasStencilComponent(VkFormat format);
-
-	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
-	void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VkDeviceMemory &imageMemory);
-
-	void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
-
-	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels);
-
-	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkMemoryPropertyFlags properties, VkBuffer &buffer, VkDeviceMemory &bufferMemory);
-
+	void createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VkBuffer &buf, VmaAllocation &alloc, VmaAllocationInfo &allocInfo);
 	void copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 	void copyBufferToImage(VkBuffer buffer, VkImage image, uint32_t width, uint32_t height);
 
+	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipLevels);
+	void createImage(uint32_t width, uint32_t height, uint32_t mipLevels, VkSampleCountFlagBits numSamples, VkFormat format, VkImageTiling tiling, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, VkImage &image, VmaAllocation &imageAlloc);
+	void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
+	void transitionImageLayout(VkImage image, VkFormat format, VkImageLayout oldLayout, VkImageLayout newLayout, uint32_t mipLevels);
+
 	VkCommandBuffer beginSingleTimeCommands();
 	void endSingleTimeCommands(VkCommandBuffer commandBuffer);
-
-	uint32_t findMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties);
 
 	void recordCommandBuffer(VkCommandBuffer commandBuffer, uint32_t imageIndex);
 
 	void updateUniformBuffer(uint32_t currentImage);
 
 	VkShaderModule createShaderModule(const std::vector<char> &code);
+	static std::vector<char> readFile(const std::string &filename);
+
+	// Callbacks
 
 	static void framebufferResizeCallback(GLFWwindow *window, int width, int height);
 	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
@@ -257,13 +256,9 @@ private:
 			const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
 			void *pUserData);
 
-	static std::vector<char> readFile(const std::string &filename);
-
 public:
 	void init();
-
 	void initWindow(GLFWwindow *p_window);
-
 	void drawFrame();
 
 	VkDevice getDevice() { return device; }
