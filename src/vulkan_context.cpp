@@ -1,9 +1,3 @@
-#define TINYOBJLOADER_IMPLEMENTATION
-#include <tiny_obj/tiny_obj_loader.h>
-
-#define VMA_IMPLEMENTATION
-#include <vma/vk_mem_alloc.h>
-
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -17,6 +11,9 @@
 #include <stdexcept>
 #include <unordered_map>
 #include <vector>
+
+#include <tiny_obj/tiny_obj_loader.h>
+#include <vma/vk_mem_alloc.h>
 
 #include "image.h"
 
