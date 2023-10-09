@@ -1,58 +1,15 @@
+#include "vk_engine.h"
 #include <iostream>
-#include <vulkan/vulkan.h>
-
-#include <GLFW/glfw3.h>
-
-#include "vulkan_context.h"
-
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
-
-static std::vector<const char *> getExtensions() {
-	uint32_t glfwExtensionCount = 0;
-	const char **glfwExtensions;
-	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-	std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
-
-	return extensions;
-}
-
-void framebufferResizeCallback(GLFWwindow *window, int width, int height) {
-	auto app = reinterpret_cast<VulkanContext *>(glfwGetWindowUserPointer(window));
-
-	glfwGetFramebufferSize(window, &width, &height);
-	app->windowResize(width, height);
-}
 
 int main() {
 	try {
-		glfwInit();
-		glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+		VulkanEngine *engine = new VulkanEngine();
 
-		VulkanContext *context = new VulkanContext(getExtensions());
+		engine->init();
+		engine->run();
+		engine->cleanup();
 
-		GLFWwindow *window = glfwCreateWindow(WIDTH, HEIGHT, "Vulkan", nullptr, nullptr);
-		glfwSetWindowUserPointer(window, context);
-		glfwSetFramebufferSizeCallback(window, framebufferResizeCallback);
-
-		VkSurfaceKHR surface;
-		glfwCreateWindowSurface(context->getInstance(), window, nullptr, &surface);
-
-		context->windowCreate(WIDTH, HEIGHT, surface);
-		context->init();
-
-		while (!glfwWindowShouldClose(window)) {
-			glfwPollEvents();
-			context->drawFrame();
-		}
-
-		vkDeviceWaitIdle(context->getDevice());
-
-		free(context);
-
-		glfwDestroyWindow(window);
-		glfwTerminate();
+		free(engine);
 
 	} catch (const std::exception &e) {
 		std::cerr << e.what() << std::endl;
