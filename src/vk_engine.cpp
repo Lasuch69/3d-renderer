@@ -12,9 +12,6 @@
 
 #include "vk_engine.h"
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
-
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkDebugUtilsMessengerEXT *pDebugMessenger) {
 	auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
 	if (func != nullptr) {
@@ -29,23 +26,6 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 	if (func != nullptr) {
 		func(instance, debugMessenger, pAllocator);
 	}
-}
-
-void VulkanEngine::windowResizedCallback(GLFWwindow *window, int width, int height) {
-	VulkanEngine *app = reinterpret_cast<VulkanEngine *>(glfwGetWindowUserPointer(window));
-
-	glfwGetFramebufferSize(window, &width, &height);
-	app->resizeWindow(width, height);
-}
-
-VKAPI_ATTR VkBool32 VKAPI_CALL VulkanEngine::debugCallback(
-		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
-		VkDebugUtilsMessageTypeFlagsEXT messageType,
-		const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
-		void *pUserData) {
-	std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
-
-	return VK_FALSE;
 }
 
 void VulkanEngine::resizeWindow(int width, int height) {
@@ -213,29 +193,6 @@ void VulkanEngine::initVulkan() {
 	createSwapChain(&_window);
 }
 
-VkPhysicalDevice VulkanEngine::pickPhysicalDevice(const VkSurfaceKHR &surface) {
-	VkPhysicalDevice chosenDevice = VK_NULL_HANDLE;
-
-	uint32_t deviceCount = 0;
-	vkEnumeratePhysicalDevices(_instance, &deviceCount, nullptr);
-
-	if (deviceCount == 0) {
-		return chosenDevice;
-	}
-
-	std::vector<VkPhysicalDevice> devices(deviceCount);
-	vkEnumeratePhysicalDevices(_instance, &deviceCount, devices.data());
-
-	for (const VkPhysicalDevice &device : devices) {
-		if (isDeviceSuitable(device, surface)) {
-			chosenDevice = device;
-			break;
-		}
-	}
-
-	return chosenDevice;
-}
-
 void VulkanEngine::initCommands() {
 	VkCommandPoolCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO;
@@ -282,11 +239,8 @@ void VulkanEngine::initSyncObjects() {
 }
 
 void VulkanEngine::initPipelines() {
-	auto vertShaderCode = readFile("shaders/vert.spv");
-	auto fragShaderCode = readFile("shaders/frag.spv");
-
-	VkShaderModule vertShaderModule = createShaderModule(vertShaderCode);
-	VkShaderModule fragShaderModule = createShaderModule(fragShaderCode);
+	VkShaderModule vertShaderModule = loadShaderModule("shaders/vert.spv");
+	VkShaderModule fragShaderModule = loadShaderModule("shaders/frag.spv");
 
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
 	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -437,6 +391,145 @@ void VulkanEngine::initScene() {
 	_renderObjects.push_back(sphere);
 }
 
+void VulkanEngine::loadMeshes() {
+	Mesh cube;
+	cube.load("models/cube.obj");
+
+	Mesh sphere;
+	sphere.load("models/sphere.obj");
+
+	uploadMesh(cube);
+	uploadMesh(sphere);
+
+	_meshes["cube"] = cube;
+	_meshes["sphere"] = sphere;
+}
+
+void VulkanEngine::uploadMesh(Mesh &mesh) {
+	// Vertex
+	VkDeviceSize vertexBufferSize = sizeof(mesh.vertices[0]) * mesh.vertices.size();
+
+	// allocate buffer
+	VmaAllocationInfo vertexAllocationInfo;
+	mesh.vertexBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertexAllocationInfo);
+
+	// transfer data
+	VmaAllocationInfo stagingAllocationInfo;
+	AllocatedBuffer stagingAllocatedBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingAllocationInfo);
+
+	memcpy(stagingAllocationInfo.pMappedData, mesh.vertices.data(), (size_t)vertexBufferSize);
+	vmaFlushAllocation(_allocator, stagingAllocatedBuffer.allocation, 0, VK_WHOLE_SIZE);
+	copyBuffer(stagingAllocatedBuffer.buffer, mesh.vertexBuffer.buffer, vertexBufferSize);
+
+	vmaDestroyBuffer(_allocator, stagingAllocatedBuffer.buffer, stagingAllocatedBuffer.allocation);
+
+	// Index
+	VkDeviceSize indexBufferSize = sizeof(mesh.indices[0]) * mesh.indices.size();
+
+	// allocate buffer
+	VmaAllocationInfo indexAllocationInfo;
+	mesh.indexBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indexAllocationInfo);
+
+	// transfer data
+	stagingAllocationInfo = {};
+	stagingAllocatedBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingAllocationInfo);
+
+	memcpy(stagingAllocationInfo.pMappedData, mesh.indices.data(), (size_t)indexBufferSize);
+	vmaFlushAllocation(_allocator, stagingAllocatedBuffer.allocation, 0, VK_WHOLE_SIZE);
+	copyBuffer(stagingAllocatedBuffer.buffer, mesh.indexBuffer.buffer, indexBufferSize);
+
+	vmaDestroyBuffer(_allocator, stagingAllocatedBuffer.buffer, stagingAllocatedBuffer.allocation);
+}
+
+Material *VulkanEngine::createMaterial(const std::string &name, VkPipeline pipeline, VkPipelineLayout pipelineLayout) {
+	Material mat;
+
+	mat.pipeline = pipeline;
+	mat.pipelineLayout = pipelineLayout;
+
+	_materials[name] = mat;
+	return &_materials[name];
+}
+
+Material *VulkanEngine::getMaterial(const std::string &name) {
+	// search for the object, and return nullptr if not found
+	auto it = _materials.find(name);
+	if (it == _materials.end()) {
+		return nullptr;
+	} else {
+		return &(*it).second;
+	}
+}
+
+Mesh *VulkanEngine::getMesh(const std::string &name) {
+	auto it = _meshes.find(name);
+	if (it == _meshes.end()) {
+		return nullptr;
+	} else {
+		return &(*it).second;
+	}
+}
+
+void VulkanEngine::drawObjects(VkCommandBuffer commandBuffer, RenderObject *renderObjects, uint32_t count) {
+	glm::vec3 camPos = { 3.f, 3.f, 2.f };
+
+	glm::mat4 view = glm::lookAt(camPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	// camera projection
+	glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)_window.swapchainExtent.width / (float)_window.swapchainExtent.height, 0.1f, 100.0f);
+	projection[1][1] *= -1;
+
+	Mesh *lastMesh = nullptr;
+	Material *lastMaterial = nullptr;
+
+	for (int i = 0; i < count; i++) {
+		RenderObject object = renderObjects[i];
+
+		if (object.material != lastMaterial) {
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
+
+			VkViewport viewport{};
+			viewport.x = 0.0f;
+			viewport.y = 0.0f;
+			viewport.width = (float)_window.swapchainExtent.width;
+			viewport.height = (float)_window.swapchainExtent.height;
+			viewport.minDepth = 0.0f;
+			viewport.maxDepth = 1.0f;
+			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+			VkRect2D scissor{};
+			scissor.offset = { 0, 0 };
+			scissor.extent = _window.swapchainExtent;
+			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+			lastMaterial = object.material;
+		}
+
+		glm::mat4 model = object.transformMatrix;
+		// final render matrix, that we are calculating on the cpu
+		glm::mat4 mesh_matrix = projection * view * model;
+
+		MeshPushConstants constants;
+		constants.render_matrix = mesh_matrix;
+
+		// upload the mesh to the gpu via pushconstants
+		vkCmdPushConstants(commandBuffer, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
+
+		// only bind the mesh if its a different one from last bind
+		if (object.mesh != lastMesh) {
+			// bind the mesh vertex buffer with offset 0
+			VkDeviceSize offset = 0;
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &object.mesh->vertexBuffer.buffer, &offset);
+
+			// bind index buffer
+			vkCmdBindIndexBuffer(commandBuffer, object.mesh->indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+			lastMesh = object.mesh;
+		}
+
+		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(object.mesh->indices.size()), 1, 0, 0, 0);
+	}
+}
+
 void VulkanEngine::draw() {
 	vkWaitForFences(_device, 1, &_renderFences[_currentFrame], VK_TRUE, UINT64_MAX);
 
@@ -526,68 +619,6 @@ void VulkanEngine::draw() {
 	_currentFrame = (_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-void VulkanEngine::drawObjects(VkCommandBuffer commandBuffer, RenderObject *renderObjects, uint32_t count) {
-	glm::vec3 camPos = { 3.f, 3.f, 2.f };
-
-	glm::mat4 view = glm::lookAt(camPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	// camera projection
-	glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)_window.swapchainExtent.width / (float)_window.swapchainExtent.height, 0.1f, 100.0f);
-	projection[1][1] *= -1;
-
-	Mesh *lastMesh = nullptr;
-	Material *lastMaterial = nullptr;
-
-	for (int i = 0; i < count; i++) {
-		RenderObject object = renderObjects[i];
-
-		if (object.material != lastMaterial) {
-			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
-
-			VkViewport viewport{};
-			viewport.x = 0.0f;
-			viewport.y = 0.0f;
-			viewport.width = (float)_window.swapchainExtent.width;
-			viewport.height = (float)_window.swapchainExtent.height;
-			viewport.minDepth = 0.0f;
-			viewport.maxDepth = 1.0f;
-			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-			VkRect2D scissor{};
-			scissor.offset = { 0, 0 };
-			scissor.extent = _window.swapchainExtent;
-			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-			lastMaterial = object.material;
-		}
-
-		glm::mat4 model = object.transformMatrix;
-		// final render matrix, that we are calculating on the cpu
-		glm::mat4 mesh_matrix = projection * view * model;
-
-		MeshPushConstants constants;
-		constants.render_matrix = mesh_matrix;
-
-		// upload the mesh to the gpu via pushconstants
-		vkCmdPushConstants(commandBuffer, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
-
-		// only bind the mesh if its a different one from last bind
-		if (object.mesh != lastMesh) {
-			// bind the mesh vertex buffer with offset 0
-			VkDeviceSize offset = 0;
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &object.mesh->vertexBuffer.buffer, &offset);
-
-			// bind index buffer
-			vkCmdBindIndexBuffer(commandBuffer, object.mesh->indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-			lastMesh = object.mesh;
-		}
-
-		// vkCmdDraw(commandBuffer, object.mesh->vertices.size(), 1, 0, 0);
-
-		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(object.mesh->indices.size()), 1, 0, 0, 0);
-	}
-}
-
 void VulkanEngine::createInstance() {
 	if (enableValidationLayers && !checkValidationLayerSupport()) {
 		throw std::runtime_error("validation layers requested, but not available!");
@@ -640,6 +671,31 @@ void VulkanEngine::createInstance() {
 	}
 }
 
+bool VulkanEngine::checkValidationLayerSupport() {
+	uint32_t layerCount;
+	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
+
+	std::vector<VkLayerProperties> availableLayers(layerCount);
+	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
+
+	for (const char *layerName : validationLayers) {
+		bool layerFound = false;
+
+		for (const auto &layerProperties : availableLayers) {
+			if (strcmp(layerName, layerProperties.layerName) == 0) {
+				layerFound = true;
+				break;
+			}
+		}
+
+		if (!layerFound) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 std::vector<const char *> VulkanEngine::getRequiredExtensions() {
 	uint32_t glfwExtensionCount = 0;
 	const char **glfwExtensions;
@@ -652,6 +708,62 @@ std::vector<const char *> VulkanEngine::getRequiredExtensions() {
 	}
 
 	return extensions;
+}
+
+VkPhysicalDevice VulkanEngine::pickPhysicalDevice(const VkSurfaceKHR &surface) {
+	VkPhysicalDevice chosenDevice = VK_NULL_HANDLE;
+
+	uint32_t deviceCount = 0;
+	vkEnumeratePhysicalDevices(_instance, &deviceCount, nullptr);
+
+	if (deviceCount == 0) {
+		return chosenDevice;
+	}
+
+	std::vector<VkPhysicalDevice> devices(deviceCount);
+	vkEnumeratePhysicalDevices(_instance, &deviceCount, devices.data());
+
+	for (const VkPhysicalDevice &device : devices) {
+		if (isDeviceSuitable(device, surface)) {
+			chosenDevice = device;
+			break;
+		}
+	}
+
+	return chosenDevice;
+}
+
+bool VulkanEngine::isDeviceSuitable(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface) {
+	QueueFamilyIndices indices = findQueueFamilies(physicalDevice, surface);
+
+	bool extensionsSupported = checkDeviceExtensionSupport(physicalDevice);
+
+	bool swapChainAdequate = false;
+	if (extensionsSupported) {
+		SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice, surface);
+		swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
+	}
+
+	VkPhysicalDeviceFeatures supportedFeatures;
+	vkGetPhysicalDeviceFeatures(physicalDevice, &supportedFeatures);
+
+	return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
+}
+
+bool VulkanEngine::checkDeviceExtensionSupport(VkPhysicalDevice physicalDevice) {
+	uint32_t extensionCount;
+	vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
+
+	std::vector<VkExtensionProperties> availableExtensions(extensionCount);
+	vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data());
+
+	std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
+
+	for (const auto &extension : availableExtensions) {
+		requiredExtensions.erase(extension.extensionName);
+	}
+
+	return requiredExtensions.empty();
 }
 
 void VulkanEngine::createSwapChain(Window *p_window) {
@@ -877,6 +989,89 @@ void VulkanEngine::recreateSwapChain(Window *p_window) {
 	createSwapChain(p_window);
 }
 
+VkShaderModule VulkanEngine::loadShaderModule(const std::string &path) {
+	std::ifstream file(path, std::ios::ate | std::ios::binary);
+
+	if (!file.is_open()) {
+		throw std::runtime_error("failed to open file!");
+	}
+
+	size_t fileSize = (size_t)file.tellg();
+	std::vector<char> buffer(fileSize);
+
+	file.seekg(0);
+	file.read(buffer.data(), fileSize);
+
+	file.close();
+
+	VkShaderModuleCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	createInfo.codeSize = buffer.size();
+	createInfo.pCode = reinterpret_cast<const uint32_t *>(buffer.data());
+
+	VkShaderModule shaderModule;
+	if (vkCreateShaderModule(_device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create shader module!");
+	}
+
+	return shaderModule;
+}
+
+QueueFamilyIndices VulkanEngine::findQueueFamilies(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface) {
+	QueueFamilyIndices indices;
+
+	uint32_t queueFamilyCount = 0;
+	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
+	std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
+	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
+
+	int i = 0;
+	for (const auto &queueFamily : queueFamilies) {
+		if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
+			indices.graphicsFamily = i;
+		}
+
+		VkBool32 presentSupport = false;
+		vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport);
+
+		if (presentSupport) {
+			indices.presentFamily = i;
+		}
+
+		if (indices.isComplete()) {
+			break;
+		}
+
+		i++;
+	}
+
+	return indices;
+}
+
+SwapChainSupportDetails VulkanEngine::querySwapChainSupport(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface) {
+	SwapChainSupportDetails details;
+
+	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &details.capabilities);
+
+	uint32_t formatCount;
+	vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
+
+	if (formatCount != 0) {
+		details.formats.resize(formatCount);
+		vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, details.formats.data());
+	}
+
+	uint32_t presentModeCount;
+	vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
+
+	if (presentModeCount != 0) {
+		details.presentModes.resize(presentModeCount);
+		vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, details.presentModes.data());
+	}
+
+	return details;
+}
+
 AllocatedBuffer VulkanEngine::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationInfo &allocationInfo) {
 	VkBufferCreateInfo bufCreateInfo{};
 	bufCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
@@ -994,226 +1189,19 @@ void VulkanEngine::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
 	vkFreeCommandBuffers(_device, _commandPool, 1, &commandBuffer);
 }
 
-void VulkanEngine::loadMeshes() {
-	Mesh cube;
-	cube.load("models/cube.obj");
+void VulkanEngine::windowResizedCallback(GLFWwindow *window, int width, int height) {
+	VulkanEngine *app = reinterpret_cast<VulkanEngine *>(glfwGetWindowUserPointer(window));
 
-	Mesh sphere;
-	sphere.load("models/sphere.obj");
-
-	uploadMesh(cube);
-	uploadMesh(sphere);
-
-	_meshes["cube"] = cube;
-	_meshes["sphere"] = sphere;
+	glfwGetFramebufferSize(window, &width, &height);
+	app->resizeWindow(width, height);
 }
 
-void VulkanEngine::uploadMesh(Mesh &mesh) {
-	// Vertex
-	VkDeviceSize vertexBufferSize = sizeof(mesh.vertices[0]) * mesh.vertices.size();
+VKAPI_ATTR VkBool32 VKAPI_CALL VulkanEngine::debugCallback(
+		VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
+		VkDebugUtilsMessageTypeFlagsEXT messageType,
+		const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
+		void *pUserData) {
+	std::cerr << "validation layer: " << pCallbackData->pMessage << std::endl;
 
-	// allocate buffer
-	VmaAllocationInfo vertexAllocationInfo;
-	mesh.vertexBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertexAllocationInfo);
-
-	// transfer data
-	VmaAllocationInfo stagingAllocationInfo;
-	AllocatedBuffer stagingAllocatedBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingAllocationInfo);
-
-	memcpy(stagingAllocationInfo.pMappedData, mesh.vertices.data(), (size_t)vertexBufferSize);
-	vmaFlushAllocation(_allocator, stagingAllocatedBuffer.allocation, 0, VK_WHOLE_SIZE);
-	copyBuffer(stagingAllocatedBuffer.buffer, mesh.vertexBuffer.buffer, vertexBufferSize);
-
-	vmaDestroyBuffer(_allocator, stagingAllocatedBuffer.buffer, stagingAllocatedBuffer.allocation);
-
-	// Index
-	VkDeviceSize indexBufferSize = sizeof(mesh.indices[0]) * mesh.indices.size();
-
-	// allocate buffer
-	VmaAllocationInfo indexAllocationInfo;
-	mesh.indexBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indexAllocationInfo);
-
-	// transfer data
-	stagingAllocationInfo = {};
-	stagingAllocatedBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingAllocationInfo);
-
-	memcpy(stagingAllocationInfo.pMappedData, mesh.indices.data(), (size_t)indexBufferSize);
-	vmaFlushAllocation(_allocator, stagingAllocatedBuffer.allocation, 0, VK_WHOLE_SIZE);
-	copyBuffer(stagingAllocatedBuffer.buffer, mesh.indexBuffer.buffer, indexBufferSize);
-
-	vmaDestroyBuffer(_allocator, stagingAllocatedBuffer.buffer, stagingAllocatedBuffer.allocation);
-}
-
-Material *VulkanEngine::createMaterial(const std::string &name, VkPipeline pipeline, VkPipelineLayout pipelineLayout) {
-	Material mat;
-
-	mat.pipeline = pipeline;
-	mat.pipelineLayout = pipelineLayout;
-
-	_materials[name] = mat;
-	return &_materials[name];
-}
-
-Material *VulkanEngine::getMaterial(const std::string &name) {
-	// search for the object, and return nullptr if not found
-	auto it = _materials.find(name);
-	if (it == _materials.end()) {
-		return nullptr;
-	} else {
-		return &(*it).second;
-	}
-}
-
-Mesh *VulkanEngine::getMesh(const std::string &name) {
-	auto it = _meshes.find(name);
-	if (it == _meshes.end()) {
-		return nullptr;
-	} else {
-		return &(*it).second;
-	}
-}
-
-bool VulkanEngine::isDeviceSuitable(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface) {
-	QueueFamilyIndices indices = findQueueFamilies(physicalDevice, surface);
-
-	bool extensionsSupported = checkDeviceExtensionSupport(physicalDevice);
-
-	bool swapChainAdequate = false;
-	if (extensionsSupported) {
-		SwapChainSupportDetails swapChainSupport = querySwapChainSupport(physicalDevice, surface);
-		swapChainAdequate = !swapChainSupport.formats.empty() && !swapChainSupport.presentModes.empty();
-	}
-
-	VkPhysicalDeviceFeatures supportedFeatures;
-	vkGetPhysicalDeviceFeatures(physicalDevice, &supportedFeatures);
-
-	return indices.isComplete() && extensionsSupported && swapChainAdequate && supportedFeatures.samplerAnisotropy;
-}
-
-QueueFamilyIndices VulkanEngine::findQueueFamilies(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface) {
-	QueueFamilyIndices indices;
-
-	uint32_t queueFamilyCount = 0;
-	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, nullptr);
-	std::vector<VkQueueFamilyProperties> queueFamilies(queueFamilyCount);
-	vkGetPhysicalDeviceQueueFamilyProperties(physicalDevice, &queueFamilyCount, queueFamilies.data());
-
-	int i = 0;
-	for (const auto &queueFamily : queueFamilies) {
-		if (queueFamily.queueFlags & VK_QUEUE_GRAPHICS_BIT) {
-			indices.graphicsFamily = i;
-		}
-
-		VkBool32 presentSupport = false;
-		vkGetPhysicalDeviceSurfaceSupportKHR(physicalDevice, i, surface, &presentSupport);
-
-		if (presentSupport) {
-			indices.presentFamily = i;
-		}
-
-		if (indices.isComplete()) {
-			break;
-		}
-
-		i++;
-	}
-
-	return indices;
-}
-
-bool VulkanEngine::checkDeviceExtensionSupport(VkPhysicalDevice physicalDevice) {
-	uint32_t extensionCount;
-	vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, nullptr);
-
-	std::vector<VkExtensionProperties> availableExtensions(extensionCount);
-	vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionCount, availableExtensions.data());
-
-	std::set<std::string> requiredExtensions(deviceExtensions.begin(), deviceExtensions.end());
-
-	for (const auto &extension : availableExtensions) {
-		requiredExtensions.erase(extension.extensionName);
-	}
-
-	return requiredExtensions.empty();
-}
-
-SwapChainSupportDetails VulkanEngine::querySwapChainSupport(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface) {
-	SwapChainSupportDetails details;
-
-	vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &details.capabilities);
-
-	uint32_t formatCount;
-	vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, nullptr);
-
-	if (formatCount != 0) {
-		details.formats.resize(formatCount);
-		vkGetPhysicalDeviceSurfaceFormatsKHR(physicalDevice, surface, &formatCount, details.formats.data());
-	}
-
-	uint32_t presentModeCount;
-	vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, nullptr);
-
-	if (presentModeCount != 0) {
-		details.presentModes.resize(presentModeCount);
-		vkGetPhysicalDeviceSurfacePresentModesKHR(physicalDevice, surface, &presentModeCount, details.presentModes.data());
-	}
-
-	return details;
-}
-
-bool VulkanEngine::checkValidationLayerSupport() {
-	uint32_t layerCount;
-	vkEnumerateInstanceLayerProperties(&layerCount, nullptr);
-
-	std::vector<VkLayerProperties> availableLayers(layerCount);
-	vkEnumerateInstanceLayerProperties(&layerCount, availableLayers.data());
-
-	for (const char *layerName : validationLayers) {
-		bool layerFound = false;
-
-		for (const auto &layerProperties : availableLayers) {
-			if (strcmp(layerName, layerProperties.layerName) == 0) {
-				layerFound = true;
-				break;
-			}
-		}
-
-		if (!layerFound) {
-			return false;
-		}
-	}
-
-	return true;
-}
-
-std::vector<char> VulkanEngine::readFile(const std::string &filename) {
-	std::ifstream file(filename, std::ios::ate | std::ios::binary);
-
-	if (!file.is_open()) {
-		throw std::runtime_error("failed to open file!");
-	}
-
-	size_t fileSize = (size_t)file.tellg();
-	std::vector<char> buffer(fileSize);
-
-	file.seekg(0);
-	file.read(buffer.data(), fileSize);
-
-	file.close();
-
-	return buffer;
-}
-
-VkShaderModule VulkanEngine::createShaderModule(const std::vector<char> &code) {
-	VkShaderModuleCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = code.size();
-	createInfo.pCode = reinterpret_cast<const uint32_t *>(code.data());
-
-	VkShaderModule shaderModule;
-	if (vkCreateShaderModule(_device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create shader module!");
-	}
-
-	return shaderModule;
+	return VK_FALSE;
 }

@@ -9,6 +9,9 @@
 #include <string>
 #include <unordered_map>
 
+const uint32_t WIDTH = 800;
+const uint32_t HEIGHT = 600;
+
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
 #ifdef NDEBUG
@@ -119,9 +122,6 @@ class VulkanEngine {
 	AllocatedImage _depthAllocatedImage;
 	VkImageView _depthImageView;
 
-	std::vector<AllocatedBuffer> _uniformBuffers;
-	std::vector<VmaAllocationInfo> _uniformAllocInfos;
-
 	std::vector<VkSemaphore> _presentSemaphores;
 	std::vector<VkSemaphore> _renderSemaphores;
 	std::vector<VkFence> _renderFences;
@@ -160,16 +160,17 @@ class VulkanEngine {
 	void cleanupSwapChain(Window *p_window);
 	void recreateSwapChain(Window *p_window);
 
-	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface);
+	VkShaderModule loadShaderModule(const std::string &filename);
 
+	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface);
 	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface);
 
 	AllocatedBuffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationInfo &allocationInfo);
 	void copyBuffer(VkBuffer &srcBuffer, VkBuffer &dstBuffer, VkDeviceSize size);
 
 	AllocatedImage createImageResource(uint32_t width, uint32_t height, VkSampleCountFlagBits numSamples, VkFormat format, VkImageUsageFlags usage);
-	AllocatedImage createImage(uint32_t width, uint32_t height, VkSampleCountFlagBits numSamples, VkFormat format, VkImageUsageFlags usage, VkMemoryPropertyFlags properties);
 
+	AllocatedImage createImage(uint32_t width, uint32_t height, VkSampleCountFlagBits numSamples, VkFormat format, VkImageUsageFlags usage, VkMemoryPropertyFlags properties);
 	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
 
 	VkCommandBuffer beginSingleTimeCommands();
@@ -181,9 +182,6 @@ class VulkanEngine {
 			VkDebugUtilsMessageTypeFlagsEXT messageType,
 			const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
 			void *pUserData);
-
-	static std::vector<char> readFile(const std::string &filename);
-	VkShaderModule createShaderModule(const std::vector<char> &code);
 
 public:
 	void resizeWindow(int width, int height);
