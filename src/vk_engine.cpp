@@ -737,18 +737,12 @@ void VulkanEngine::createSwapChain(Window *p_window) {
 
 	free(swapchainImages);
 
-	// Color resource
+	// Resources
 
-	createImage(extent.width, extent.height, _msaaSamples, surfaceFormat.format,
-			VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, _colorAllocatedImage);
-
+	_colorAllocatedImage = createImageResource(extent.width, extent.height, _msaaSamples, surfaceFormat.format, VK_IMAGE_USAGE_TRANSIENT_ATTACHMENT_BIT | VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT);
 	_colorImageView = createImageView(_colorAllocatedImage.image, surfaceFormat.format, VK_IMAGE_ASPECT_COLOR_BIT);
 
-	// Depth resource
-
-	createImage(extent.width, extent.height, _msaaSamples, _depthFormat,
-			VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT, _depthAllocatedImage);
-
+	_depthAllocatedImage = createImageResource(extent.width, extent.height, _msaaSamples, _depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT);
 	_depthImageView = createImageView(_depthAllocatedImage.image, _depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 
 	// Framebuffers
@@ -883,27 +877,42 @@ void VulkanEngine::recreateSwapChain(Window *p_window) {
 	createSwapChain(p_window);
 }
 
-VkImageView VulkanEngine::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
-	VkImageViewCreateInfo viewInfo{};
-	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	viewInfo.image = image;
-	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	viewInfo.format = format;
-	viewInfo.subresourceRange.aspectMask = aspectFlags;
-	viewInfo.subresourceRange.baseMipLevel = 0;
-	viewInfo.subresourceRange.levelCount = 1;
-	viewInfo.subresourceRange.baseArrayLayer = 0;
-	viewInfo.subresourceRange.layerCount = 1;
+AllocatedBuffer VulkanEngine::createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationInfo &allocationInfo) {
+	VkBufferCreateInfo bufCreateInfo{};
+	bufCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
+	bufCreateInfo.size = size;
+	bufCreateInfo.usage = usage;
 
-	VkImageView imageView;
-	if (vkCreateImageView(_device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create texture image view!");
+	VmaAllocationCreateInfo allocCreateInfo{};
+	allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
+	allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
+
+	AllocatedBuffer allocatedBuffer;
+	if (vmaCreateBuffer(_allocator, &bufCreateInfo, &allocCreateInfo, &allocatedBuffer.buffer, &allocatedBuffer.allocation, &allocationInfo) != VK_SUCCESS) {
+		throw std::runtime_error("failed to allocate buffer!");
 	}
 
-	return imageView;
+	return allocatedBuffer;
 }
 
-void VulkanEngine::createImage(uint32_t width, uint32_t height, VkSampleCountFlagBits numSamples, VkFormat format, VkImageUsageFlags usage, VkMemoryPropertyFlags properties, AllocatedImage &allocatedImage) {
+void VulkanEngine::copyBuffer(VkBuffer &srcBuffer, VkBuffer &dstBuffer, VkDeviceSize size) {
+	VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+
+	VkBufferCopy bufCopy{};
+	bufCopy.srcOffset = 0;
+	bufCopy.dstOffset = 0;
+	bufCopy.size = size;
+
+	vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &bufCopy);
+
+	endSingleTimeCommands(commandBuffer);
+}
+
+AllocatedImage VulkanEngine::createImageResource(uint32_t width, uint32_t height, VkSampleCountFlagBits numSamples, VkFormat format, VkImageUsageFlags usage) {
+	return createImage(width, height, numSamples, format, usage, VK_MEMORY_PROPERTY_DEVICE_LOCAL_BIT);
+}
+
+AllocatedImage VulkanEngine::createImage(uint32_t width, uint32_t height, VkSampleCountFlagBits numSamples, VkFormat format, VkImageUsageFlags usage, VkMemoryPropertyFlags properties) {
 	VkImageCreateInfo imageInfo{};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -924,9 +933,65 @@ void VulkanEngine::createImage(uint32_t width, uint32_t height, VkSampleCountFla
 	allocCreateInfo.flags = VMA_ALLOCATION_CREATE_DEDICATED_MEMORY_BIT;
 	allocCreateInfo.priority = 1.0f;
 
+	AllocatedImage allocatedImage;
 	if (vmaCreateImage(_allocator, &imageInfo, &allocCreateInfo, &allocatedImage.image, &allocatedImage.allocation, nullptr) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create image!");
 	}
+
+	return allocatedImage;
+}
+
+VkImageView VulkanEngine::createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags) {
+	VkImageViewCreateInfo viewInfo{};
+	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
+	viewInfo.image = image;
+	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
+	viewInfo.format = format;
+	viewInfo.subresourceRange.aspectMask = aspectFlags;
+	viewInfo.subresourceRange.baseMipLevel = 0;
+	viewInfo.subresourceRange.levelCount = 1;
+	viewInfo.subresourceRange.baseArrayLayer = 0;
+	viewInfo.subresourceRange.layerCount = 1;
+
+	VkImageView imageView;
+	if (vkCreateImageView(_device, &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create texture image view!");
+	}
+
+	return imageView;
+}
+
+VkCommandBuffer VulkanEngine::beginSingleTimeCommands() {
+	VkCommandBufferAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
+	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
+	allocInfo.commandPool = _commandPool;
+	allocInfo.commandBufferCount = 1;
+
+	VkCommandBuffer commandBuffer;
+	vkAllocateCommandBuffers(_device, &allocInfo, &commandBuffer);
+
+	VkCommandBufferBeginInfo beginInfo{};
+	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
+	beginInfo.flags = VK_COMMAND_BUFFER_USAGE_ONE_TIME_SUBMIT_BIT;
+
+	vkBeginCommandBuffer(commandBuffer, &beginInfo);
+
+	return commandBuffer;
+}
+
+void VulkanEngine::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
+	vkEndCommandBuffer(commandBuffer);
+
+	VkSubmitInfo submitInfo{};
+	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
+	submitInfo.commandBufferCount = 1;
+	submitInfo.pCommandBuffers = &commandBuffer;
+
+	vkQueueSubmit(_graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
+	vkQueueWaitIdle(_graphicsQueue);
+
+	vkFreeCommandBuffers(_device, _commandPool, 1, &commandBuffer);
 }
 
 void VulkanEngine::loadMeshes() {
@@ -944,55 +1009,39 @@ void VulkanEngine::loadMeshes() {
 }
 
 void VulkanEngine::uploadMesh(Mesh &mesh) {
-	// let the VMA library know that this data should be writeable by CPU, but also readable by GPU
-	VmaAllocationCreateInfo vmaAllocInfo = {};
-	vmaAllocInfo.usage = VMA_MEMORY_USAGE_CPU_TO_GPU;
-
-	// allocate vertex buffer
+	// Vertex
 	VkDeviceSize vertexBufferSize = sizeof(mesh.vertices[0]) * mesh.vertices.size();
 
-	VkBufferCreateInfo vertexBufferInfo = {};
-	vertexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	vertexBufferInfo.pNext = nullptr;
-	vertexBufferInfo.size = vertexBufferSize;
-	vertexBufferInfo.usage = VK_BUFFER_USAGE_VERTEX_BUFFER_BIT;
+	// allocate buffer
+	VmaAllocationInfo vertexAllocationInfo;
+	mesh.vertexBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertexAllocationInfo);
 
-	// allocate the buffer
-	vmaCreateBuffer(_allocator, &vertexBufferInfo, &vmaAllocInfo,
-			&mesh.vertexBuffer.buffer,
-			&mesh.vertexBuffer.allocation,
-			nullptr);
+	// transfer data
+	VmaAllocationInfo stagingAllocationInfo;
+	AllocatedBuffer stagingAllocatedBuffer = createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingAllocationInfo);
 
-	// copy vertex data
-	void *vertexData;
-	vmaMapMemory(_allocator, mesh.vertexBuffer.allocation, &vertexData);
+	memcpy(stagingAllocationInfo.pMappedData, mesh.vertices.data(), (size_t)vertexBufferSize);
+	vmaFlushAllocation(_allocator, stagingAllocatedBuffer.allocation, 0, VK_WHOLE_SIZE);
+	copyBuffer(stagingAllocatedBuffer.buffer, mesh.vertexBuffer.buffer, vertexBufferSize);
 
-	memcpy(vertexData, mesh.vertices.data(), vertexBufferSize);
+	vmaDestroyBuffer(_allocator, stagingAllocatedBuffer.buffer, stagingAllocatedBuffer.allocation);
 
-	vmaUnmapMemory(_allocator, mesh.vertexBuffer.allocation);
-
-	// allocate index buffer
+	// Index
 	VkDeviceSize indexBufferSize = sizeof(mesh.indices[0]) * mesh.indices.size();
 
-	VkBufferCreateInfo indexBufferInfo = {};
-	indexBufferInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	indexBufferInfo.pNext = nullptr;
-	indexBufferInfo.size = indexBufferSize;
-	indexBufferInfo.usage = VK_BUFFER_USAGE_INDEX_BUFFER_BIT;
+	// allocate buffer
+	VmaAllocationInfo indexAllocationInfo;
+	mesh.indexBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indexAllocationInfo);
 
-	// allocate the buffer
-	vmaCreateBuffer(_allocator, &indexBufferInfo, &vmaAllocInfo,
-			&mesh.indexBuffer.buffer,
-			&mesh.indexBuffer.allocation,
-			nullptr);
+	// transfer data
+	stagingAllocationInfo = {};
+	stagingAllocatedBuffer = createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingAllocationInfo);
 
-	// copy vertex data
-	void *indexData;
-	vmaMapMemory(_allocator, mesh.indexBuffer.allocation, &indexData);
+	memcpy(stagingAllocationInfo.pMappedData, mesh.indices.data(), (size_t)indexBufferSize);
+	vmaFlushAllocation(_allocator, stagingAllocatedBuffer.allocation, 0, VK_WHOLE_SIZE);
+	copyBuffer(stagingAllocatedBuffer.buffer, mesh.indexBuffer.buffer, indexBufferSize);
 
-	memcpy(indexData, mesh.indices.data(), indexBufferSize);
-
-	vmaUnmapMemory(_allocator, mesh.indexBuffer.allocation);
+	vmaDestroyBuffer(_allocator, stagingAllocatedBuffer.buffer, stagingAllocatedBuffer.allocation);
 }
 
 Material *VulkanEngine::createMaterial(const std::string &name, VkPipeline pipeline, VkPipelineLayout pipelineLayout) {
