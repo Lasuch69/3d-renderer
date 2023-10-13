@@ -48,7 +48,14 @@ struct MeshPushConstants {
 	glm::mat4 render_matrix;
 };
 
+struct Texture {
+	AllocatedImage image;
+	VkImageView view;
+	VkSampler sampler;
+};
+
 struct Material {
+	VkDescriptorSet textureSet;
 	VkPipeline pipeline;
 	VkPipelineLayout pipelineLayout;
 };
@@ -61,11 +68,16 @@ struct RenderObject {
 };
 
 class VulkanEngine {
+	VkDescriptorPool _descriptorPool;
+	VkDescriptorSetLayout _descriptorSetLayout;
+	std::vector<VkDescriptorSet> _descriptorSets;
+
 	// Objects
 	std::vector<RenderObject> _renderObjects;
 
-	std::unordered_map<std::string, Material> _materials;
 	std::unordered_map<std::string, Mesh> _meshes;
+	std::unordered_map<std::string, Material> _materials;
+	std::unordered_map<std::string, Texture> _textures;
 
 	GLFWwindow *_glfwWindow = nullptr;
 
@@ -116,10 +128,10 @@ class VulkanEngine {
 	VkColorSpaceKHR _colorSpace;
 	uint32_t _swapchainImageCount = 0;
 
-	AllocatedImage _colorAllocatedImage;
+	AllocatedImage _colorImage;
 	VkImageView _colorImageView;
 
-	AllocatedImage _depthAllocatedImage;
+	AllocatedImage _depthImage;
 	VkImageView _depthImageView;
 
 	std::vector<VkSemaphore> _presentSemaphores;
@@ -131,16 +143,19 @@ class VulkanEngine {
 	void initVulkan();
 	void initCommands();
 	void initSyncObjects();
+	void initDescriptors();
 	void initPipelines();
 	void initScene();
 
 	void loadMeshes();
-	void uploadMesh(Mesh &mesh);
+	void loadTextures();
 
+	void uploadMesh(Mesh &mesh);
 	Material *createMaterial(const std::string &name, VkPipeline pipeline, VkPipelineLayout pipelineLayout);
 
 	Mesh *getMesh(const std::string &name);
 	Material *getMaterial(const std::string &name);
+	Texture *getTexture(const std::string &name);
 
 	void drawObjects(VkCommandBuffer commandBuffer, RenderObject *renderObjects, uint32_t count);
 	void draw();
@@ -165,13 +180,16 @@ class VulkanEngine {
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface);
 	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface);
 
-	AllocatedBuffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationInfo &allocationInfo);
+	AllocatedBuffer createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationInfo &allocInfo);
 	void copyBuffer(VkBuffer &srcBuffer, VkBuffer &dstBuffer, VkDeviceSize size);
+
+	Texture createTexture(uint32_t width, uint32_t height, VkFormat format, const std::vector<uint8_t> &data);
+	void generateMipmaps(VkImage image, VkFormat imageFormat, int32_t texWidth, int32_t texHeight, uint32_t mipLevels);
 
 	AllocatedImage createImageResource(uint32_t width, uint32_t height, VkSampleCountFlagBits numSamples, VkFormat format, VkImageUsageFlags usage);
 
-	AllocatedImage createImage(uint32_t width, uint32_t height, VkSampleCountFlagBits numSamples, VkFormat format, VkImageUsageFlags usage, VkMemoryPropertyFlags properties);
-	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags);
+	AllocatedImage createImage(uint32_t width, uint32_t height, uint32_t mipmaps, VkSampleCountFlagBits numSamples, VkFormat format, VkImageUsageFlags usage);
+	VkImageView createImageView(VkImage image, VkFormat format, VkImageAspectFlags aspectFlags, uint32_t mipmaps);
 
 	VkCommandBuffer beginSingleTimeCommands();
 	void endSingleTimeCommands(VkCommandBuffer commandBuffer);
