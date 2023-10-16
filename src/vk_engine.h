@@ -43,9 +43,27 @@ struct SwapChainSupportDetails {
 	std::vector<VkPresentModeKHR> presentModes;
 };
 
+struct UniformBufferObject {
+	alignas(16) glm::mat4 view;
+	alignas(16) glm::mat4 proj;
+};
+
+struct FrameData {
+	VkCommandBuffer commandBuffer;
+
+	AllocatedBuffer uniformBuffer;
+	VmaAllocationInfo uniformAllocInfo;
+	VkDescriptorSet uniformSet;
+
+	// Sync objects
+	VkSemaphore presentSemaphore;
+	VkSemaphore renderSemaphore;
+	VkFence renderFence;
+};
+
 struct MeshPushConstants {
 	glm::vec4 data;
-	glm::mat4 render_matrix;
+	glm::mat4 model;
 };
 
 struct Texture {
@@ -69,8 +87,8 @@ struct RenderObject {
 
 class VulkanEngine {
 	VkDescriptorPool _descriptorPool;
-	VkDescriptorSetLayout _descriptorSetLayout;
-	std::vector<VkDescriptorSet> _descriptorSets;
+	VkDescriptorSetLayout _globalSetLayout;
+	VkDescriptorSetLayout _textureSetLayout;
 
 	// Objects
 	std::vector<RenderObject> _renderObjects;
@@ -118,7 +136,6 @@ class VulkanEngine {
 	Window _window;
 
 	VkCommandPool _commandPool;
-	std::vector<VkCommandBuffer> _commandBuffers;
 
 	VkSampleCountFlagBits _msaaSamples = VK_SAMPLE_COUNT_8_BIT;
 
@@ -134,9 +151,7 @@ class VulkanEngine {
 	AllocatedImage _depthImage;
 	VkImageView _depthImageView;
 
-	std::vector<VkSemaphore> _presentSemaphores;
-	std::vector<VkSemaphore> _renderSemaphores;
-	std::vector<VkFence> _renderFences;
+	FrameData _frameData[MAX_FRAMES_IN_FLIGHT];
 
 	uint32_t _currentFrame = 0;
 
@@ -174,6 +189,8 @@ class VulkanEngine {
 	void createSwapChain(Window *p_window);
 	void cleanupSwapChain(Window *p_window);
 	void recreateSwapChain(Window *p_window);
+
+	void updateUniformBuffer(uint32_t currentFrame);
 
 	VkShaderModule loadShaderModule(const std::string &filename);
 

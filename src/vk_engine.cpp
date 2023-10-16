@@ -61,6 +61,7 @@ void VulkanEngine::init() {
 	std::cout << "Sync objects ready!\n";
 
 	initDescriptors();
+	std::cout << "Descriptors initialized!\n";
 
 	initPipelines();
 	std::cout << "Pipelines initialized!\n";
@@ -211,24 +212,20 @@ void VulkanEngine::initCommands() {
 		throw std::runtime_error("failed to create command pool!");
 	}
 
-	_commandBuffers.resize(MAX_FRAMES_IN_FLIGHT);
-
 	VkCommandBufferAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	allocInfo.commandPool = _commandPool;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
-	allocInfo.commandBufferCount = (uint32_t)_commandBuffers.size();
+	allocInfo.commandBufferCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
-	if (vkAllocateCommandBuffers(_device, &allocInfo, _commandBuffers.data()) != VK_SUCCESS) {
-		throw std::runtime_error("failed to allocate command buffers!");
+	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		if (vkAllocateCommandBuffers(_device, &allocInfo, &_frameData[i].commandBuffer) != VK_SUCCESS) {
+			throw std::runtime_error("failed to allocate command buffers!");
+		}
 	}
 }
 
 void VulkanEngine::initSyncObjects() {
-	_presentSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-	_renderSemaphores.resize(MAX_FRAMES_IN_FLIGHT);
-	_renderFences.resize(MAX_FRAMES_IN_FLIGHT);
-
 	VkSemaphoreCreateInfo semaphoreInfo{};
 	semaphoreInfo.sType = VK_STRUCTURE_TYPE_SEMAPHORE_CREATE_INFO;
 
@@ -237,15 +234,87 @@ void VulkanEngine::initSyncObjects() {
 	fenceInfo.flags = VK_FENCE_CREATE_SIGNALED_BIT;
 
 	for (size_t i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-		if (vkCreateSemaphore(_device, &semaphoreInfo, nullptr, &_presentSemaphores[i]) != VK_SUCCESS ||
-				vkCreateSemaphore(_device, &semaphoreInfo, nullptr, &_renderSemaphores[i]) != VK_SUCCESS ||
-				vkCreateFence(_device, &fenceInfo, nullptr, &_renderFences[i]) != VK_SUCCESS) {
+		if (vkCreateSemaphore(_device, &semaphoreInfo, nullptr, &_frameData[i].presentSemaphore) != VK_SUCCESS ||
+				vkCreateSemaphore(_device, &semaphoreInfo, nullptr, &_frameData[i].renderSemaphore) != VK_SUCCESS ||
+				vkCreateFence(_device, &fenceInfo, nullptr, &_frameData[i].renderFence) != VK_SUCCESS) {
 			throw std::runtime_error("failed to create synchronization objects for a frame!");
 		}
 	}
 }
 
 void VulkanEngine::initDescriptors() {
+	std::array<VkDescriptorPoolSize, 2> poolSizes{};
+	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+	poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	poolSizes[1].descriptorCount = 1;
+
+	VkDescriptorPoolCreateInfo poolInfo{};
+	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
+	poolInfo.pPoolSizes = poolSizes.data();
+	poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) + 1;
+
+	if (vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create descriptor pool!");
+	}
+
+	// Global set layout
+
+	VkDescriptorSetLayoutBinding uboBinding{};
+	uboBinding.binding = 0;
+	uboBinding.descriptorCount = 1;
+	uboBinding.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+	uboBinding.pImmutableSamplers = nullptr;
+	uboBinding.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+	VkDescriptorSetLayoutCreateInfo uboLayoutInfo{};
+	uboLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	uboLayoutInfo.bindingCount = 1;
+	uboLayoutInfo.pBindings = &uboBinding;
+
+	if (vkCreateDescriptorSetLayout(_device, &uboLayoutInfo, nullptr, &_globalSetLayout) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create UBO set layout!");
+	}
+
+	std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _globalSetLayout);
+	VkDescriptorSetAllocateInfo allocInfo{};
+	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+	allocInfo.descriptorPool = _descriptorPool;
+	allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+	allocInfo.pSetLayouts = layouts.data();
+
+	std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> uniformSets{};
+
+	if (vkAllocateDescriptorSets(_device, &allocInfo, uniformSets.data()) != VK_SUCCESS) {
+		throw std::runtime_error("failed to allocate uniform set!");
+	}
+
+	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+		VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+
+		_frameData[i].uniformBuffer = createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, _frameData[i].uniformAllocInfo);
+		_frameData[i].uniformSet = uniformSets[i];
+
+		VkDescriptorBufferInfo uniformBufferInfo{};
+		uniformBufferInfo.buffer = _frameData[i].uniformBuffer.buffer;
+		uniformBufferInfo.offset = 0;
+		uniformBufferInfo.range = sizeof(UniformBufferObject);
+
+		VkWriteDescriptorSet descriptorWrite{};
+		descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		descriptorWrite.dstSet = _frameData[i].uniformSet;
+		descriptorWrite.dstBinding = 0;
+		descriptorWrite.dstArrayElement = 0;
+		descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+		descriptorWrite.descriptorCount = 1;
+		descriptorWrite.pBufferInfo = &uniformBufferInfo;
+
+		vkUpdateDescriptorSets(_device, 1, &descriptorWrite, 0, nullptr);
+	}
+
+	// Texture set layout
+
 	VkDescriptorSetLayoutBinding textureBinding{};
 	textureBinding.binding = 0;
 	textureBinding.descriptorCount = 1;
@@ -253,28 +322,13 @@ void VulkanEngine::initDescriptors() {
 	textureBinding.pImmutableSamplers = nullptr;
 	textureBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-	std::array<VkDescriptorSetLayoutBinding, 1> bindings = { textureBinding };
-	VkDescriptorSetLayoutCreateInfo layoutInfo{};
-	layoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
-	layoutInfo.bindingCount = static_cast<uint32_t>(bindings.size());
-	layoutInfo.pBindings = bindings.data();
+	VkDescriptorSetLayoutCreateInfo textureLayoutInfo{};
+	textureLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	textureLayoutInfo.bindingCount = 1;
+	textureLayoutInfo.pBindings = &textureBinding;
 
-	if (vkCreateDescriptorSetLayout(_device, &layoutInfo, nullptr, &_descriptorSetLayout) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create descriptor set layout!");
-	}
-
-	std::array<VkDescriptorPoolSize, 1> poolSizes{};
-	poolSizes[0].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
-	VkDescriptorPoolCreateInfo poolInfo{};
-	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
-	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
-	poolInfo.pPoolSizes = poolSizes.data();
-	poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-
-	if (vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create descriptor pool!");
+	if (vkCreateDescriptorSetLayout(_device, &textureLayoutInfo, nullptr, &_textureSetLayout) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create texture set layout!");
 	}
 }
 
@@ -364,15 +418,19 @@ void VulkanEngine::initPipelines() {
 	dynamicState.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
 	dynamicState.pDynamicStates = dynamicStates.data();
 
+	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
+	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+
+	VkDescriptorSetLayout setLayouts[] = { _globalSetLayout, _textureSetLayout };
+
+	pipelineLayoutInfo.setLayoutCount = 2;
+	pipelineLayoutInfo.pSetLayouts = setLayouts;
+
 	VkPushConstantRange pushConstant{};
 	pushConstant.offset = 0;
 	pushConstant.size = sizeof(MeshPushConstants);
 	pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
-	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutInfo.setLayoutCount = 1;
-	pipelineLayoutInfo.pSetLayouts = &_descriptorSetLayout;
 	pipelineLayoutInfo.pushConstantRangeCount = 1;
 	pipelineLayoutInfo.pPushConstantRanges = &pushConstant;
 
@@ -434,15 +492,14 @@ void VulkanEngine::initScene() {
 
 	Texture *texture = getTexture("texture");
 
-	std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _descriptorSetLayout);
 	VkDescriptorSetAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
 	allocInfo.descriptorPool = _descriptorPool;
 	allocInfo.descriptorSetCount = 1;
-	allocInfo.pSetLayouts = layouts.data();
+	allocInfo.pSetLayouts = &_textureSetLayout;
 
 	if (vkAllocateDescriptorSets(_device, &allocInfo, &main->textureSet) != VK_SUCCESS) {
-		throw std::runtime_error("failed to allocate descriptor sets!");
+		throw std::runtime_error("failed to allocate image set!");
 	}
 
 	VkDescriptorImageInfo imageInfo{};
@@ -450,17 +507,16 @@ void VulkanEngine::initScene() {
 	imageInfo.imageView = texture->view;
 	imageInfo.sampler = texture->sampler;
 
-	std::array<VkWriteDescriptorSet, 1> descriptorWrites{};
+	VkWriteDescriptorSet descriptorWrite{};
+	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrite.dstSet = main->textureSet;
+	descriptorWrite.dstBinding = 0;
+	descriptorWrite.dstArrayElement = 0;
+	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrite.descriptorCount = 1;
+	descriptorWrite.pImageInfo = &imageInfo;
 
-	descriptorWrites[0].sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrites[0].dstSet = main->textureSet;
-	descriptorWrites[0].dstBinding = 0;
-	descriptorWrites[0].dstArrayElement = 0;
-	descriptorWrites[0].descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	descriptorWrites[0].descriptorCount = 1;
-	descriptorWrites[0].pImageInfo = &imageInfo;
-
-	vkUpdateDescriptorSets(_device, static_cast<uint32_t>(descriptorWrites.size()), descriptorWrites.data(), 0, nullptr);
+	vkUpdateDescriptorSets(_device, 1, &descriptorWrite, 0, nullptr);
 }
 
 void VulkanEngine::loadMeshes() {
@@ -570,13 +626,6 @@ Texture *VulkanEngine::getTexture(const std::string &name) {
 }
 
 void VulkanEngine::drawObjects(VkCommandBuffer commandBuffer, RenderObject *renderObjects, uint32_t count) {
-	glm::vec3 camPos = { 3.f, 3.f, 2.f };
-
-	glm::mat4 view = glm::lookAt(camPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	// camera projection
-	glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)_window.swapchainExtent.width / (float)_window.swapchainExtent.height, 0.1f, 100.0f);
-	projection[1][1] *= -1;
-
 	Mesh *lastMesh = nullptr;
 	Material *lastMaterial = nullptr;
 
@@ -603,12 +652,8 @@ void VulkanEngine::drawObjects(VkCommandBuffer commandBuffer, RenderObject *rend
 			lastMaterial = object.material;
 		}
 
-		glm::mat4 model = object.transformMatrix;
-		// final render matrix, that we are calculating on the cpu
-		glm::mat4 mesh_matrix = projection * view * model;
-
 		MeshPushConstants constants;
-		constants.render_matrix = mesh_matrix;
+		constants.model = object.transformMatrix;
 
 		// upload the mesh to the gpu via pushconstants
 		vkCmdPushConstants(commandBuffer, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
@@ -620,7 +665,8 @@ void VulkanEngine::drawObjects(VkCommandBuffer commandBuffer, RenderObject *rend
 			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &object.mesh->vertexBuffer.buffer, &offset);
 
 			// bind descriptors
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &object.material->textureSet, 0, nullptr);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &_frameData[_currentFrame].uniformSet, 0, nullptr);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 1, 1, &object.material->textureSet, 0, nullptr);
 
 			// bind index buffer
 			vkCmdBindIndexBuffer(commandBuffer, object.mesh->indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
@@ -633,10 +679,11 @@ void VulkanEngine::drawObjects(VkCommandBuffer commandBuffer, RenderObject *rend
 }
 
 void VulkanEngine::draw() {
-	vkWaitForFences(_device, 1, &_renderFences[_currentFrame], VK_TRUE, UINT64_MAX);
+	int i = _currentFrame;
+	vkWaitForFences(_device, 1, &_frameData[i].renderFence, VK_TRUE, UINT64_MAX);
 
 	uint32_t imageIndex;
-	VkResult result = vkAcquireNextImageKHR(_device, _window.swapchain, UINT64_MAX, _presentSemaphores[_currentFrame], VK_NULL_HANDLE, &imageIndex);
+	VkResult result = vkAcquireNextImageKHR(_device, _window.swapchain, UINT64_MAX, _frameData[i].presentSemaphore, VK_NULL_HANDLE, &imageIndex);
 
 	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
 		recreateSwapChain(&_window);
@@ -644,14 +691,16 @@ void VulkanEngine::draw() {
 		throw std::runtime_error("failed to acquire swap chain image!");
 	}
 
-	vkResetFences(_device, 1, &_renderFences[_currentFrame]);
+	updateUniformBuffer(i);
 
-	vkResetCommandBuffer(_commandBuffers[_currentFrame], 0);
+	vkResetFences(_device, 1, &_frameData[i].renderFence);
+
+	vkResetCommandBuffer(_frameData[i].commandBuffer, 0);
 
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-	if (vkBeginCommandBuffer(_commandBuffers[_currentFrame], &beginInfo) != VK_SUCCESS) {
+	if (vkBeginCommandBuffer(_frameData[i].commandBuffer, &beginInfo) != VK_SUCCESS) {
 		throw std::runtime_error("failed to begin recording command buffer!");
 	}
 
@@ -669,31 +718,31 @@ void VulkanEngine::draw() {
 	renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 	renderPassInfo.pClearValues = clearValues.data();
 
-	vkCmdBeginRenderPass(_commandBuffers[_currentFrame], &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
+	vkCmdBeginRenderPass(_frameData[i].commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	drawObjects(_commandBuffers[_currentFrame], _renderObjects.data(), _renderObjects.size());
+	drawObjects(_frameData[i].commandBuffer, _renderObjects.data(), _renderObjects.size());
 
-	vkCmdEndRenderPass(_commandBuffers[_currentFrame]);
+	vkCmdEndRenderPass(_frameData[i].commandBuffer);
 
-	vkEndCommandBuffer(_commandBuffers[_currentFrame]);
+	vkEndCommandBuffer(_frameData[i].commandBuffer);
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 
-	VkSemaphore waitSemaphores[] = { _presentSemaphores[_currentFrame] };
+	VkSemaphore waitSemaphores[] = { _frameData[i].presentSemaphore };
 	VkPipelineStageFlags waitStages[] = { VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT };
 	submitInfo.waitSemaphoreCount = 1;
 	submitInfo.pWaitSemaphores = waitSemaphores;
 	submitInfo.pWaitDstStageMask = waitStages;
 
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &_commandBuffers[_currentFrame];
+	submitInfo.pCommandBuffers = &_frameData[i].commandBuffer;
 
-	VkSemaphore signalSemaphores[] = { _renderSemaphores[_currentFrame] };
+	VkSemaphore signalSemaphores[] = { _frameData[i].renderSemaphore };
 	submitInfo.signalSemaphoreCount = 1;
 	submitInfo.pSignalSemaphores = signalSemaphores;
 
-	if (vkQueueSubmit(_graphicsQueue, 1, &submitInfo, _renderFences[_currentFrame]) != VK_SUCCESS) {
+	if (vkQueueSubmit(_graphicsQueue, 1, &submitInfo, _frameData[i].renderFence) != VK_SUCCESS) {
 		throw std::runtime_error("failed to submit draw command buffer!");
 	}
 
@@ -719,6 +768,20 @@ void VulkanEngine::draw() {
 	}
 
 	_currentFrame = (_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+}
+
+void VulkanEngine::updateUniformBuffer(uint32_t currentFrame) {
+	glm::vec3 camPos = { 3.f, 3.f, 2.f };
+
+	glm::mat4 view = glm::lookAt(camPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)_window.swapchainExtent.width / (float)_window.swapchainExtent.height, 0.1f, 100.0f);
+	projection[1][1] *= -1;
+
+	UniformBufferObject ubo{};
+	ubo.view = view;
+	ubo.proj = projection;
+
+	memcpy(_frameData[currentFrame].uniformAllocInfo.pMappedData, &ubo, sizeof(ubo));
 }
 
 void VulkanEngine::createInstance() {
