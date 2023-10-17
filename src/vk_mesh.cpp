@@ -1,6 +1,6 @@
 #include <string>
 
-#include <tiny_obj/tiny_obj_loader.h>
+#include <tiny_obj_loader.h>
 
 #include "vk_mesh.h"
 

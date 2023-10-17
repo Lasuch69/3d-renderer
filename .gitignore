@@ -4,8 +4,20 @@
 # compile output
 renderer
 *.o
+
+# cmake
+.cmake
+CMakeLists.txt.user
+CMakeCache.txt
+CMakeFiles
+CMakeScripts
+Testing
+Makefile
+cmake_install.cmake
+install_manifest.txt
 compile_commands.json
-.sconsign.dblite
+CTestTestfile.cmake
+_deps
 
 # clang
 .cache

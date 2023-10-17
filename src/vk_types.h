@@ -1,7 +1,7 @@
 #ifndef VK_TYPES_H
 #define VK_TYPES_H
 
-#include <vma/vk_mem_alloc.h>
+#include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
 
 struct AllocatedBuffer {
