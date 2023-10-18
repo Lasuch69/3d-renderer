@@ -10,6 +10,10 @@
 #include <set>
 #include <stdexcept>
 
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_vulkan.h>
+
 #include <stb_image.h>
 
 #include "vk_engine.h"
@@ -75,12 +79,49 @@ void VulkanEngine::init() {
 	initScene();
 	std::cout << "Scene initialized!\n";
 
+	initImGui();
+	std::cout << "ImGui initialized!\n";
+
 	_initialized = true;
 }
 
 void VulkanEngine::run() {
 	while (!glfwWindowShouldClose(_glfwWindow)) {
 		glfwPollEvents();
+
+		ImGui_ImplVulkan_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
+
+		{
+			static bool show_demo_window = false;
+			static bool show_another_window = false;
+
+			static float clear_color[] = { 0.0f, 0.0f, 0.0f };
+
+			static float f = 0.0f;
+			static int counter = 0;
+
+			ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
+
+			ImGui::Text("This is some useful text."); // Display some text (you can use a format strings too)
+			ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
+			ImGui::Checkbox("Another Window", &show_another_window);
+
+			ImGui::SliderFloat("float", &f, 0.0f, 1.0f); // Edit 1 float using a slider from 0.0f to 1.0f
+			ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
+
+			if (ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
+				counter++;
+			ImGui::SameLine();
+			ImGui::Text("counter = %d", counter);
+
+			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / _io.Framerate, _io.Framerate);
+			ImGui::End();
+		}
+
+		ImGui::Render();
+
 		draw();
 	}
 
@@ -89,6 +130,11 @@ void VulkanEngine::run() {
 
 void VulkanEngine::cleanup() {
 	if (_initialized) {
+		// Clean ImGui stuff
+		ImGui_ImplVulkan_Shutdown();
+		ImGui_ImplGlfw_Shutdown();
+		ImGui::DestroyContext();
+
 		vmaDestroyAllocator(_allocator);
 
 		cleanupSwapChain(&_window);
@@ -243,17 +289,21 @@ void VulkanEngine::initSyncObjects() {
 }
 
 void VulkanEngine::initDescriptors() {
-	std::array<VkDescriptorPoolSize, 2> poolSizes{};
+	std::array<VkDescriptorPoolSize, 3> poolSizes{};
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 	poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	poolSizes[1].descriptorCount = 1;
 
+	// ImGui
+	poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	poolSizes[2].descriptorCount = 1;
+
 	VkDescriptorPoolCreateInfo poolInfo{};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 	poolInfo.pPoolSizes = poolSizes.data();
-	poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) + 1;
+	poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) + 2;
 
 	if (vkCreateDescriptorPool(_device, &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create descriptor pool!");
@@ -519,6 +569,47 @@ void VulkanEngine::initScene() {
 	vkUpdateDescriptorSets(_device, 1, &descriptorWrite, 0, nullptr);
 }
 
+static void check_vk_result(VkResult err) {
+	if (err == 0)
+		return;
+	fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
+	if (err < 0)
+		abort();
+}
+
+void VulkanEngine::initImGui() {
+	// Setup Dear ImGui context
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	_io = ImGui::GetIO();
+	_io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+	_io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
+
+	// Setup Platform/Renderer backends
+	ImGui_ImplGlfw_InitForVulkan(_glfwWindow, true);
+	ImGui_ImplVulkan_InitInfo init_info = {};
+	init_info.Instance = _instance;
+	init_info.PhysicalDevice = _physicalDevice;
+	init_info.Device = _device;
+	init_info.QueueFamily = _graphicsQueueFamily;
+	init_info.Queue = _graphicsQueue;
+	init_info.PipelineCache = nullptr;
+	init_info.DescriptorPool = _descriptorPool;
+	init_info.Subpass = 0;
+	init_info.MinImageCount = 2;
+	init_info.ImageCount = 2;
+	init_info.MSAASamples = _msaaSamples;
+	init_info.Allocator = nullptr;
+	init_info.CheckVkResultFn = check_vk_result;
+	ImGui_ImplVulkan_Init(&init_info, _window.renderPass);
+
+	VkCommandBuffer commandBuffer = beginSingleTimeCommands();
+	ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
+	endSingleTimeCommands(commandBuffer);
+
+	ImGui_ImplVulkan_DestroyFontUploadObjects();
+}
+
 void VulkanEngine::loadMeshes() {
 	Mesh cube;
 	cube.load("models/cube.obj");
@@ -721,6 +812,9 @@ void VulkanEngine::draw() {
 	vkCmdBeginRenderPass(_frameData[i].commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 	drawObjects(_frameData[i].commandBuffer, _renderObjects.data(), _renderObjects.size());
+
+	ImDrawData *draw_data = ImGui::GetDrawData();
+	ImGui_ImplVulkan_RenderDrawData(draw_data, _frameData[i].commandBuffer);
 
 	vkCmdEndRenderPass(_frameData[i].commandBuffer);
 

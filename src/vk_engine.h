@@ -1,6 +1,7 @@
 #ifndef VULKAN_CONTEXT_H
 #define VULKAN_CONTEXT_H
 
+#include "imgui.h"
 #include "vk_mesh.h"
 
 #include <GLFW/glfw3.h>
@@ -86,6 +87,8 @@ struct RenderObject {
 };
 
 class VulkanEngine {
+	ImGuiIO _io;
+
 	VkDescriptorPool _descriptorPool;
 	VkDescriptorSetLayout _globalSetLayout;
 	VkDescriptorSetLayout _textureSetLayout;
@@ -161,6 +164,8 @@ class VulkanEngine {
 	void initDescriptors();
 	void initPipelines();
 	void initScene();
+
+	void initImGui();
 
 	void loadMeshes();
 	void loadTextures();
