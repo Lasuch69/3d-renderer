@@ -124,7 +124,7 @@ void VulkanEngine::run() {
 				ImGui::SameLine();
 				ImGui::Text("counter = %d", counter);
 
-				ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / _io.Framerate, _io.Framerate);
+				ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / _io->Framerate, _io->Framerate);
 				ImGui::End();
 			}
 
@@ -590,9 +590,9 @@ void VulkanEngine::initImGui() {
 	// Setup Dear ImGui context
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
-	_io = ImGui::GetIO();
-	_io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
-	_io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
+	_io = &ImGui::GetIO();
+	_io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+	_io->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
 
 	// Setup Platform/Renderer backends
 	ImGui_ImplGlfw_InitForVulkan(_glfwWindow, true);

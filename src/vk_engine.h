@@ -89,7 +89,7 @@ struct RenderObject {
 class VulkanEngine {
 	int _keyState = 0;
 	bool _drawDebugMenu = false;
-	ImGuiIO _io;
+	ImGuiIO *_io;
 
 	VkDescriptorPool _descriptorPool;
 	VkDescriptorSetLayout _globalSetLayout;
