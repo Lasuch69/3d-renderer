@@ -89,38 +89,47 @@ void VulkanEngine::run() {
 	while (!glfwWindowShouldClose(_glfwWindow)) {
 		glfwPollEvents();
 
-		ImGui_ImplVulkan_NewFrame();
-		ImGui_ImplGlfw_NewFrame();
-		ImGui::NewFrame();
-
-		{
-			static bool show_demo_window = false;
-			static bool show_another_window = false;
-
-			static float clear_color[] = { 0.0f, 0.0f, 0.0f };
-
-			static float f = 0.0f;
-			static int counter = 0;
-
-			ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
-
-			ImGui::Text("This is some useful text."); // Display some text (you can use a format strings too)
-			ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
-			ImGui::Checkbox("Another Window", &show_another_window);
-
-			ImGui::SliderFloat("float", &f, 0.0f, 1.0f); // Edit 1 float using a slider from 0.0f to 1.0f
-			ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
-
-			if (ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
-				counter++;
-			ImGui::SameLine();
-			ImGui::Text("counter = %d", counter);
-
-			ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / _io.Framerate, _io.Framerate);
-			ImGui::End();
+		int state = glfwGetKey(_glfwWindow, GLFW_KEY_F6);
+		if (state != _keyState) {
+			_keyState = state;
+			if (state == GLFW_PRESS)
+				_drawDebugMenu = !_drawDebugMenu;
 		}
 
-		ImGui::Render();
+		if (_drawDebugMenu) {
+			ImGui_ImplVulkan_NewFrame();
+			ImGui_ImplGlfw_NewFrame();
+			ImGui::NewFrame();
+
+			{
+				static bool show_demo_window = false;
+				static bool show_another_window = false;
+
+				static float clear_color[] = { 0.0f, 0.0f, 0.0f };
+
+				static float f = 0.0f;
+				static int counter = 0;
+
+				ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
+
+				ImGui::Text("This is some useful text."); // Display some text (you can use a format strings too)
+				ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
+				ImGui::Checkbox("Another Window", &show_another_window);
+
+				ImGui::SliderFloat("float", &f, 0.0f, 1.0f); // Edit 1 float using a slider from 0.0f to 1.0f
+				ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
+
+				if (ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
+					counter++;
+				ImGui::SameLine();
+				ImGui::Text("counter = %d", counter);
+
+				ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / _io.Framerate, _io.Framerate);
+				ImGui::End();
+			}
+
+			ImGui::Render();
+		}
 
 		draw();
 	}
@@ -813,8 +822,9 @@ void VulkanEngine::draw() {
 
 	drawObjects(_frameData[i].commandBuffer, _renderObjects.data(), _renderObjects.size());
 
-	ImDrawData *draw_data = ImGui::GetDrawData();
-	ImGui_ImplVulkan_RenderDrawData(draw_data, _frameData[i].commandBuffer);
+	if (_drawDebugMenu) {
+		ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), _frameData[i].commandBuffer);
+	}
 
 	vkCmdEndRenderPass(_frameData[i].commandBuffer);
 
