@@ -87,6 +87,17 @@ struct RenderObject {
 };
 
 class VulkanEngine {
+	bool _firstFrame = true;
+	double _lastX;
+	double _lastY;
+
+	double _yaw;
+	double _pitch;
+
+	glm::vec3 _camPosition = glm::vec3(3.f, 3.f, 2.f);
+	glm::vec3 _camFront = glm::vec3(0.f);
+	glm::vec3 _camUp = glm::vec3(0.f, 0.f, 1.f);
+
 	double _deltaTime;
 
 	int _keyState = 0;
@@ -220,7 +231,6 @@ class VulkanEngine {
 	VkCommandBuffer beginSingleTimeCommands();
 	void endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
-	static void windowResizedCallback(GLFWwindow *window, int width, int height);
 	static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 			VkDebugUtilsMessageSeverityFlagBitsEXT messageSeverity,
 			VkDebugUtilsMessageTypeFlagsEXT messageType,
@@ -229,6 +239,7 @@ class VulkanEngine {
 
 public:
 	void resizeWindow(int width, int height);
+	void moveCamera(double x, double y);
 
 	void init();
 	void run();

@@ -34,6 +34,19 @@ void DestroyDebugUtilsMessengerEXT(VkInstance instance, VkDebugUtilsMessengerEXT
 	}
 }
 
+void cursorCallback(GLFWwindow *window, double xpos, double ypos) {
+	VulkanEngine *app = reinterpret_cast<VulkanEngine *>(glfwGetWindowUserPointer(window));
+
+	app->moveCamera(xpos, ypos);
+}
+
+void windowResizedCallback(GLFWwindow *window, int width, int height) {
+	VulkanEngine *app = reinterpret_cast<VulkanEngine *>(glfwGetWindowUserPointer(window));
+
+	glfwGetFramebufferSize(window, &width, &height);
+	app->resizeWindow(width, height);
+}
+
 void VulkanEngine::resizeWindow(int width, int height) {
 	if (width == _window.width && height == _window.height) {
 		return;
@@ -44,6 +57,37 @@ void VulkanEngine::resizeWindow(int width, int height) {
 	_window.resized = true;
 }
 
+void VulkanEngine::moveCamera(double x, double y) {
+	if (_firstFrame) {
+		_lastX = x;
+		_lastY = y;
+		_firstFrame = false;
+	}
+
+	float xoffset = x - _lastX;
+	float yoffset = y - _lastY;
+	_lastX = x;
+	_lastY = y;
+
+	float sensitivity = 0.075f;
+	xoffset *= sensitivity;
+	yoffset *= sensitivity;
+
+	_yaw -= xoffset;
+	_pitch -= yoffset;
+
+	if (_pitch > 89.0f)
+		_pitch = 89.0f;
+	if (_pitch < -89.0f)
+		_pitch = -89.0f;
+
+	glm::vec3 direction;
+	direction.x = cos(glm::radians(_yaw)) * cos(glm::radians(_pitch));
+	direction.y = sin(glm::radians(_yaw)) * cos(glm::radians(_pitch));
+	direction.z = sin(glm::radians(_pitch));
+	_camFront = glm::normalize(direction);
+}
+
 void VulkanEngine::init() {
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
@@ -52,6 +96,12 @@ void VulkanEngine::init() {
 
 	glfwSetWindowUserPointer(_glfwWindow, this);
 	glfwSetFramebufferSizeCallback(_glfwWindow, windowResizedCallback);
+
+	if (glfwRawMouseMotionSupported())
+		glfwSetInputMode(_glfwWindow, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
+
+	glfwSetInputMode(_glfwWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetCursorPosCallback(_glfwWindow, cursorCallback);
 
 	std::cout << "Window initialized!\n";
 
@@ -99,36 +149,27 @@ void VulkanEngine::run() {
 				_drawDebugMenu = !_drawDebugMenu;
 		}
 
+		float x = glfwGetKey(_glfwWindow, GLFW_KEY_D) - glfwGetKey(_glfwWindow, GLFW_KEY_A);
+		float y = glfwGetKey(_glfwWindow, GLFW_KEY_W) - glfwGetKey(_glfwWindow, GLFW_KEY_S);
+
+		glm::vec3 direction = (x * glm::normalize(glm::cross(_camFront, _camUp))) + (y * _camFront);
+
+		_camPosition += direction * 4.f * (float)_deltaTime;
+
 		if (_drawDebugMenu) {
 			ImGui_ImplVulkan_NewFrame();
 			ImGui_ImplGlfw_NewFrame();
 			ImGui::NewFrame();
 
 			{
-				static bool show_demo_window = false;
-				static bool show_another_window = false;
+				ImGui::Begin("Hello, world!");
 
-				static float clear_color[] = { 0.0f, 0.0f, 0.0f };
-
-				static float f = 0.0f;
-				static int counter = 0;
-
-				ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
-
-				ImGui::Text("This is some useful text."); // Display some text (you can use a format strings too)
-				ImGui::Checkbox("Demo Window", &show_demo_window); // Edit bools storing our window open/close state
-				ImGui::Checkbox("Another Window", &show_another_window);
-
-				ImGui::SliderFloat("float", &f, 0.0f, 1.0f); // Edit 1 float using a slider from 0.0f to 1.0f
-				ImGui::ColorEdit3("clear color", (float *)&clear_color); // Edit 3 floats representing a color
-
-				if (ImGui::Button("Button")) // Buttons return true when clicked (most widgets return true when edited/activated)
-					counter++;
-				ImGui::SameLine();
-				ImGui::Text("counter = %d", counter);
-
-				ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / _io->Framerate, _io->Framerate);
+				ImGui::Text("%.1f FPS (%.3f ms)", _io->Framerate, 1000.0f / _io->Framerate);
 				ImGui::Text("Delta time: %.4f s", _deltaTime);
+
+				ImGui::Text("Position: (%.3f, %.3f, %.3f)", _camPosition.x, _camPosition.y, _camPosition.z);
+				ImGui::Text("Direction: (%.3f, %.3f, %.3f)", _camFront.x, _camFront.y, _camFront.z);
+
 				ImGui::End();
 			}
 
@@ -882,9 +923,7 @@ void VulkanEngine::draw() {
 }
 
 void VulkanEngine::updateUniformBuffer(uint32_t currentFrame) {
-	glm::vec3 camPos = { 3.f, 3.f, 2.f };
-
-	glm::mat4 view = glm::lookAt(camPos, glm::vec3(0.0f, 0.0f, 0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
+	glm::mat4 view = glm::lookAt(_camPosition, _camPosition + _camFront, _camUp);
 	glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)_window.swapchainExtent.width / (float)_window.swapchainExtent.height, 0.1f, 100.0f);
 	projection[1][1] *= -1;
 
@@ -1655,13 +1694,6 @@ void VulkanEngine::endSingleTimeCommands(VkCommandBuffer commandBuffer) {
 	vkQueueWaitIdle(_graphicsQueue);
 
 	vkFreeCommandBuffers(_device, _commandPool, 1, &commandBuffer);
-}
-
-void VulkanEngine::windowResizedCallback(GLFWwindow *window, int width, int height) {
-	VulkanEngine *app = reinterpret_cast<VulkanEngine *>(glfwGetWindowUserPointer(window));
-
-	glfwGetFramebufferSize(window, &width, &height);
-	app->resizeWindow(width, height);
 }
 
 VKAPI_ATTR VkBool32 VKAPI_CALL VulkanEngine::debugCallback(
