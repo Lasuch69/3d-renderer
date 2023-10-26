@@ -87,6 +87,8 @@ struct RenderObject {
 };
 
 class VulkanEngine {
+	double _deltaTime;
+
 	int _keyState = 0;
 	bool _drawDebugMenu = false;
 	ImGuiIO *_io;

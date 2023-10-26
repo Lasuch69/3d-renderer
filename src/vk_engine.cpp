@@ -87,6 +87,9 @@ void VulkanEngine::init() {
 
 void VulkanEngine::run() {
 	while (!glfwWindowShouldClose(_glfwWindow)) {
+		std::chrono::high_resolution_clock timer;
+		auto start = timer.now();
+
 		glfwPollEvents();
 
 		int state = glfwGetKey(_glfwWindow, GLFW_KEY_F6);
@@ -125,6 +128,7 @@ void VulkanEngine::run() {
 				ImGui::Text("counter = %d", counter);
 
 				ImGui::Text("Application average %.3f ms/frame (%.1f FPS)", 1000.0f / _io->Framerate, _io->Framerate);
+				ImGui::Text("Delta time: %.4f s", _deltaTime);
 				ImGui::End();
 			}
 
@@ -132,6 +136,9 @@ void VulkanEngine::run() {
 		}
 
 		draw();
+
+		auto stop = timer.now();
+		_deltaTime = (std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() / 1000000.0);
 	}
 
 	vkDeviceWaitIdle(_device);
