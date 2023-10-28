@@ -1,14 +1,14 @@
 #ifndef VULKAN_CONTEXT_H
 #define VULKAN_CONTEXT_H
 
-#include "imgui.h"
-#include "vk_mesh.h"
-
 #include <GLFW/glfw3.h>
+#include <imgui.h>
 
 #include <optional>
 #include <string>
 #include <unordered_map>
+
+#include "vk_mesh.h"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -211,8 +211,6 @@ class VulkanEngine {
 	void recreateSwapChain(Window *p_window);
 
 	void updateUniformBuffer(uint32_t currentFrame);
-
-	VkShaderModule loadShaderModule(const std::string &filename);
 
 	QueueFamilyIndices findQueueFamilies(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface);
 	SwapChainSupportDetails querySwapChainSupport(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface);

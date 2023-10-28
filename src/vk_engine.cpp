@@ -17,6 +17,7 @@
 #include <stb_image.h>
 
 #include "vk_engine.h"
+#include "vk_shader.h"
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkDebugUtilsMessengerEXT *pDebugMessenger) {
 	auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
@@ -440,8 +441,8 @@ void VulkanEngine::initDescriptors() {
 }
 
 void VulkanEngine::initPipelines() {
-	VkShaderModule vertShaderModule = loadShaderModule("shaders/vert.spv");
-	VkShaderModule fragShaderModule = loadShaderModule("shaders/frag.spv");
+	VkShaderModule vertShaderModule = loadShader(_device, "shaders/shader.vert", EShLangVertex);
+	VkShaderModule fragShaderModule = loadShader(_device, "shaders/shader.frag", EShLangFragment);
 
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
 	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
@@ -1302,34 +1303,6 @@ void VulkanEngine::recreateSwapChain(Window *p_window) {
 
 	cleanupSwapChain(p_window);
 	createSwapChain(p_window);
-}
-
-VkShaderModule VulkanEngine::loadShaderModule(const std::string &path) {
-	std::ifstream file(path, std::ios::ate | std::ios::binary);
-
-	if (!file.is_open()) {
-		throw std::runtime_error("failed to open file!");
-	}
-
-	size_t fileSize = (size_t)file.tellg();
-	std::vector<char> buffer(fileSize);
-
-	file.seekg(0);
-	file.read(buffer.data(), fileSize);
-
-	file.close();
-
-	VkShaderModuleCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = buffer.size();
-	createInfo.pCode = reinterpret_cast<const uint32_t *>(buffer.data());
-
-	VkShaderModule shaderModule;
-	if (vkCreateShaderModule(_device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create shader module!");
-	}
-
-	return shaderModule;
 }
 
 QueueFamilyIndices VulkanEngine::findQueueFamilies(VkPhysicalDevice physicalDevice, const VkSurfaceKHR &surface) {
