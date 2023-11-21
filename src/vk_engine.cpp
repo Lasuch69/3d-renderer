@@ -16,8 +16,8 @@
 
 #include <stb_image.h>
 
+#include "shaders/material.glsl.gen.h"
 #include "vk_engine.h"
-#include "vk_shader.h"
 
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkDebugUtilsMessengerEXT *pDebugMessenger) {
 	auto func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
@@ -441,19 +441,43 @@ void VulkanEngine::initDescriptors() {
 }
 
 void VulkanEngine::initPipelines() {
-	VkShaderModule vertShaderModule = loadShader(_device, "shaders/shader.vert", EShLangVertex);
-	VkShaderModule fragShaderModule = loadShader(_device, "shaders/shader.frag", EShLangFragment);
+	MaterialShaderRD shader;
+
+	std::vector<uint32_t> spirv = shader.getVertexCode();
+
+	// Create shader module
+	VkShaderModuleCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	createInfo.codeSize = spirv.size() * sizeof(uint32_t);
+	createInfo.pCode = spirv.data();
+
+	VkShaderModule vertexModule;
+	if (vkCreateShaderModule(_device, &createInfo, nullptr, &vertexModule) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create vertex module!");
+	}
+
+	spirv = shader.getFragmentCode();
+
+	// Create shader module
+	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	createInfo.codeSize = spirv.size() * sizeof(uint32_t);
+	createInfo.pCode = spirv.data();
+
+	VkShaderModule fragmentModule;
+	if (vkCreateShaderModule(_device, &createInfo, nullptr, &fragmentModule) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create fragment module!");
+	}
 
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
 	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-	vertShaderStageInfo.module = vertShaderModule;
+	vertShaderStageInfo.module = vertexModule;
 	vertShaderStageInfo.pName = "main";
 
 	VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
 	fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	fragShaderStageInfo.module = fragShaderModule;
+	fragShaderStageInfo.module = fragmentModule;
 	fragShaderStageInfo.pName = "main";
 
 	VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
@@ -569,8 +593,8 @@ void VulkanEngine::initPipelines() {
 		throw std::runtime_error("failed to create graphics pipeline!");
 	}
 
-	vkDestroyShaderModule(_device, fragShaderModule, nullptr);
-	vkDestroyShaderModule(_device, vertShaderModule, nullptr);
+	vkDestroyShaderModule(_device, fragmentModule, nullptr);
+	vkDestroyShaderModule(_device, vertexModule, nullptr);
 
 	createMaterial("main", pipeline, pipelineLayout);
 }

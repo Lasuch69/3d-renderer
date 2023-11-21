@@ -94,9 +94,9 @@ class VulkanEngine {
 	double _yaw;
 	double _pitch;
 
-	glm::vec3 _camPosition = glm::vec3(3.f, 3.f, 2.f);
-	glm::vec3 _camFront = glm::vec3(0.f);
-	glm::vec3 _camUp = glm::vec3(0.f, 0.f, 1.f);
+	glm::vec3 _camPosition = glm::vec3(-5.0, 0.0, 1.0);
+	glm::vec3 _camFront = glm::vec3(0.0);
+	glm::vec3 _camUp = glm::vec3(0.0, 0.0, 1.0);
 
 	double _deltaTime;
 

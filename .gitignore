@@ -1,4 +1,5 @@
-# compiled shaders
+# shaders
+*.gen.h
 *.spv
 
 # compile output

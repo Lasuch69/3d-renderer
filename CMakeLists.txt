@@ -7,7 +7,11 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 find_package(Vulkan REQUIRED)
 set(LIBRARIES "glfw;Vulkan::Vulkan")
 
+execute_process(COMMAND python shader_gen.py
+                WORKING_DIRECTORY ${CMAKE_CURRENT_LIST_DIR})
+
 file(GLOB_RECURSE SOURCES src/*.cpp)
+file(GLOB_RECURSE SHADERS src/shaders/*.cpp)
 
 # Dear ImGui
 file(GLOB_RECURSE IMGUI_SOURCES thirdparty/imgui/*.cpp
@@ -68,6 +72,6 @@ include_directories(
   thirdparty/vma thirdparty/stb thirdparty/tiny_obj thirdparty/imgui
   thirdparty/imgui/backends thirdparty/glslang)
 
-add_executable(renderer ${SOURCES} ${DEPENDENCIES} ${IMGUI_SOURCES}
+add_executable(renderer ${SOURCES} ${SHADERS} ${DEPENDENCIES} ${IMGUI_SOURCES}
                         ${GLSL_SOURCES})
 target_link_libraries(renderer ${LIBRARIES})
