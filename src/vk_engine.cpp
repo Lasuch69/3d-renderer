@@ -14,8 +14,7 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 
-#include <stb_image.h>
-
+#include "loader.h"
 #include "shaders/material.glsl.gen.h"
 #include "vk_engine.h"
 
@@ -693,11 +692,8 @@ void VulkanEngine::initImGui() {
 }
 
 void VulkanEngine::loadMeshes() {
-	Mesh cube;
-	cube.load("models/cube.obj");
-
-	Mesh sphere;
-	sphere.load("models/sphere.obj");
+	Mesh cube = Loader::load_mesh("models/cube.obj");
+	Mesh sphere = Loader::load_mesh("models/sphere.obj");
 
 	uploadMesh(cube);
 	uploadMesh(sphere);
@@ -707,18 +703,9 @@ void VulkanEngine::loadMeshes() {
 }
 
 void VulkanEngine::loadTextures() {
-	int texWidth, texHeight, texChannels;
-	stbi_uc *pixels = stbi_load("textures/raw_plank_wall_diff_1k.png", &texWidth, &texHeight, &texChannels, STBI_rgb_alpha);
+	Image image = Loader::load_image("textures/raw_plank_wall_diff_1k.png");
 
-	uint32_t size = texWidth * texHeight * 4;
-
-	std::vector<uint8_t> data(size);
-	for (int i = 0; i < size; i++) {
-		data[i] = pixels[i];
-	}
-
-	Texture texture = createTexture(texWidth, texHeight, VK_FORMAT_R8G8B8A8_SRGB, data);
-
+	Texture texture = createTexture(image.width, image.height, image.format, image.data);
 	_textures["texture"] = texture;
 }
 
