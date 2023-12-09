@@ -1,5 +1,5 @@
-#ifndef VULKAN_CONTEXT_H
-#define VULKAN_CONTEXT_H
+#ifndef VULKAN_ENGINE_H
+#define VULKAN_ENGINE_H
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
@@ -244,4 +244,4 @@ public:
 	void cleanup();
 };
 
-#endif // !VULKAN_CONTEXT_H
+#endif // !VULKAN_ENGINE_H
