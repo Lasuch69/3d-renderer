@@ -8,7 +8,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtx/hash.hpp>
 
-#include "vk_types.h"
+#include "types.h"
 
 struct Vertex {
 	glm::vec3 pos;

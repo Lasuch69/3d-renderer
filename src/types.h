@@ -1,5 +1,5 @@
-#ifndef VK_TYPES_H
-#define VK_TYPES_H
+#ifndef TYPES_H
+#define TYPES_H
 
 #include <vk_mem_alloc.h>
 #include <vulkan/vulkan.h>
@@ -14,4 +14,4 @@ struct AllocatedImage {
 	VkImage image;
 };
 
-#endif // !VK_TYPES_H
+#endif // !TYPES_H
