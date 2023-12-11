@@ -102,7 +102,7 @@ public:
 	void draw();
 	void waitIdle();
 
-	RenderingDevice();
+	RenderingDevice(bool p_validationLayers);
 	~RenderingDevice();
 };
 

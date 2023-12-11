@@ -35,7 +35,7 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 }
 
 void VulkanContext::_createInstance() {
-	if (enableValidationLayers && !_checkValidationLayerSupport()) {
+	if (_validationLayers && !_checkValidationLayerSupport()) {
 		throw std::runtime_error("validation layers requested, but not available!");
 	}
 
@@ -56,7 +56,7 @@ void VulkanContext::_createInstance() {
 	createInfo.ppEnabledExtensionNames = extensions.data();
 
 	VkDebugUtilsMessengerCreateInfoEXT debugCreateInfo{};
-	if (enableValidationLayers) {
+	if (_validationLayers) {
 		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
 		createInfo.ppEnabledLayerNames = validationLayers.data();
 
@@ -77,7 +77,7 @@ void VulkanContext::_createInstance() {
 		throw std::runtime_error("failed to create instance!");
 	}
 
-	if (!enableValidationLayers) {
+	if (!_validationLayers) {
 		return;
 	}
 
@@ -118,7 +118,7 @@ std::vector<const char *> VulkanContext::_getRequiredExtensions() {
 
 	std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
 
-	if (enableValidationLayers) {
+	if (_validationLayers) {
 		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 	}
 
@@ -263,7 +263,7 @@ VkDevice VulkanContext::_createDevice(VkPhysicalDevice p_physicalDevice, VkSurfa
 	createInfo.enabledExtensionCount = static_cast<uint32_t>(deviceExtensions.size());
 	createInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
-	if (enableValidationLayers) {
+	if (_validationLayers) {
 		createInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
 		createInfo.ppEnabledLayerNames = validationLayers.data();
 	} else {
@@ -706,7 +706,9 @@ void VulkanContext::submit(uint32_t p_currentFrame, uint32_t p_imageIndex, VkCom
 	}
 }
 
-VulkanContext::VulkanContext() {
+VulkanContext::VulkanContext(bool p_validationLayers) {
+	_validationLayers = p_validationLayers;
+
 	_createInstance();
 }
 

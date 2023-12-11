@@ -896,8 +896,8 @@ void RenderingDevice::waitIdle() {
 	vkDeviceWaitIdle(_context->getDevice());
 }
 
-RenderingDevice::RenderingDevice() {
-	_context = new VulkanContext();
+RenderingDevice::RenderingDevice(bool p_validationLayers) {
+	_context = new VulkanContext(p_validationLayers);
 }
 
 RenderingDevice::~RenderingDevice() {

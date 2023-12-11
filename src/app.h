@@ -13,7 +13,7 @@ private:
 	void _windowInit(uint32_t p_width, uint32_t p_height);
 
 public:
-	void init();
+	void init(bool p_validationLayers);
 	void run();
 
 	void windowResize(uint32_t p_width, uint32_t p_height);

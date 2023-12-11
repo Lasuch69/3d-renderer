@@ -28,10 +28,10 @@ void App::_windowInit(uint32_t p_width, uint32_t p_height) {
 	glfwSetCursorPosCallback(_window, cursorMotionCallback);
 }
 
-void App::init() {
+void App::init(bool p_validationLayers) {
 	_windowInit(WIDTH, HEIGHT);
 
-	_renderingDevice = new RenderingDevice();
+	_renderingDevice = new RenderingDevice(p_validationLayers);
 	_renderingDevice->windowCreate(_window, WIDTH, HEIGHT);
 }
 

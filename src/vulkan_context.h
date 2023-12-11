@@ -11,12 +11,6 @@
 
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
-#ifdef NDEBUG
-const bool enableValidationLayers = false;
-#else
-const bool enableValidationLayers = true;
-#endif
-
 const std::vector<const char *> validationLayers = {
 	"VK_LAYER_KHRONOS_validation"
 };
@@ -48,6 +42,8 @@ struct SyncObject {
 
 class VulkanContext {
 private:
+	bool _validationLayers = false;
+
 	VkInstance _instance;
 
 	VkDebugUtilsMessengerEXT _debugMessenger;
@@ -162,7 +158,7 @@ public:
 
 	SyncObject getSyncObject(uint32_t p_index) { return _syncObjects[p_index]; }
 
-	VulkanContext();
+	VulkanContext(bool p_validationLayers);
 	~VulkanContext();
 };
 

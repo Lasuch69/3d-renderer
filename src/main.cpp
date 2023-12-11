@@ -1,13 +1,22 @@
 #include <cstdlib>
+#include <cstring>
 #include <iostream>
 
 #include "app.h"
 
-int main() {
+int main(int argc, char *argv[]) {
+	bool validationLayers = false;
+
+	for (int i = 0; i < argc; i++) {
+		if (strcmp(argv[i], "--validation-layers") == 0) {
+			validationLayers = true;
+		}
+	}
+
 	try {
 		App *app = new App();
 
-		app->init();
+		app->init(validationLayers);
 		app->run();
 
 		free(app);
