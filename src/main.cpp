@@ -1,15 +1,16 @@
-#include "vk_engine.h"
+#include <cstdlib>
 #include <iostream>
+
+#include "app.h"
 
 int main() {
 	try {
-		VulkanEngine *engine = new VulkanEngine();
+		App *app = new App();
 
-		engine->init();
-		engine->run();
-		engine->cleanup();
+		app->init();
+		app->run();
 
-		free(engine);
+		free(app);
 
 	} catch (const std::exception &e) {
 		std::cerr << e.what() << std::endl;
