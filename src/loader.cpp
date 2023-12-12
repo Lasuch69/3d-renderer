@@ -16,7 +16,7 @@ Mesh Loader::load_mesh(const char *p_path) {
 	std::unordered_map<Vertex, uint32_t> uniqueVertices{};
 
 	std::vector<Vertex> vertices;
-	std::vector<u_int32_t> indices;
+	std::vector<uint32_t> indices;
 
 	for (const auto &shape : shapes) {
 		for (const auto &index : shape.mesh.indices) {

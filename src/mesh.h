@@ -67,7 +67,7 @@ struct hash<Vertex> {
 
 struct Mesh {
 	std::vector<Vertex> vertices;
-	std::vector<u_int32_t> indices;
+	std::vector<uint32_t> indices;
 
 	AllocatedBuffer vertexBuffer;
 	AllocatedBuffer indexBuffer;
