@@ -24,6 +24,7 @@ void App::_windowInit(uint32_t p_width, uint32_t p_height) {
 
 	// glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
+	glfwSetWindowUserPointer(_window, this);
 	glfwSetFramebufferSizeCallback(_window, windowResizeCallback);
 	glfwSetCursorPosCallback(_window, cursorMotionCallback);
 }
@@ -51,6 +52,7 @@ void App::run() {
 }
 
 void App::windowResize(uint32_t p_width, uint32_t p_height) {
+	_renderingDevice->windowResize(p_width, p_height);
 }
 
 void App::cameraMove(int p_x, int p_y) {
