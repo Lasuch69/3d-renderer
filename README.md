@@ -14,9 +14,13 @@ Currently only Linux is supported.
 
 #### Tools
 
+- Ubuntu: `sudo apt install cmake g++`
+
 - Fedora: `sudo dnf install cmake g++`
 
 #### Dependencies
+
+- Ubuntu: `sudo apt install libvulkan-dev vulkan-validationlayers libglfw3-dev libglm-dev`
 
 - Fedora: `sudo dnf install vulkan-devel vulkan-validation-layers glfw-devel glm-devel`
 
