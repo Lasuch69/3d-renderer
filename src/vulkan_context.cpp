@@ -489,7 +489,9 @@ void VulkanContext::_cleanupSwapChain(Window *p_window) {
 	}
 
 	p_window->swapchainImages.clear();
+
 	vkDestroySwapchainKHR(_device, p_window->swapchain, nullptr);
+	vkDestroyRenderPass(_device, p_window->renderPass, nullptr);
 }
 
 void VulkanContext::_recreateSwapChain(Window *p_window) {
@@ -640,6 +642,8 @@ void VulkanContext::windowCreate(GLFWwindow *p_window, uint32_t p_width, uint32_
 	vkGetDeviceQueue(_device, indices.graphicsFamily.value(), 0, &_graphicsQueue);
 	vkGetDeviceQueue(_device, indices.presentFamily.value(), 0, &_presentQueue);
 
+	_graphicsQueueFamily = indices.graphicsFamily.value();
+
 	_window = {};
 	_window.surface = surface;
 	_window.width = p_width;
@@ -714,6 +718,17 @@ VulkanContext::VulkanContext(bool p_validationLayers) {
 
 VulkanContext::~VulkanContext() {
 	if (_initialized) {
+		_cleanupSwapChain(&_window);
+
+		vkDestroyCommandPool(_device, _commandPool, nullptr);
+
+		vkDestroyDevice(_device, nullptr);
+
+		if (_validationLayers) {
+			DestroyDebugUtilsMessengerEXT(_instance, _debugMessenger, nullptr);
+		}
+
+		vkDestroySurfaceKHR(_instance, _window.surface, nullptr);
 	}
 
 	vkDestroyInstance(_instance, nullptr);

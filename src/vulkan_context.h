@@ -127,8 +127,8 @@ private:
 	VkFormat _findDepthFormat();
 	VkFormat _findSupportedFormat(const std::vector<VkFormat> &p_candidates, VkImageTiling p_tiling, VkFormatFeatureFlags p_features);
 
-	void _createSyncObjects();
 	void _createCommandPool();
+	void _createSyncObjects();
 
 public:
 	void windowCreate(GLFWwindow *p_window, uint32_t p_width, uint32_t p_height);
