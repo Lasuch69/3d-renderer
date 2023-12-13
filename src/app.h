@@ -10,16 +10,15 @@ private:
 	GLFWwindow *_window;
 	RenderingDevice *_renderingDevice;
 
-	void _windowInit(uint32_t p_width, uint32_t p_height);
-
 public:
-	void init(bool p_validationLayers);
+	void windowCreate(uint32_t p_width, uint32_t p_height);
+	void windowResize(uint32_t p_width, uint32_t p_height);
+
 	void run();
 
-	void windowResize(uint32_t p_width, uint32_t p_height);
 	void cameraMove(int p_x, int p_y);
 
-	App();
+	App(bool p_validationLayers);
 	~App();
 };
 

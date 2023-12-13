@@ -1,47 +1,45 @@
-#include "app.h"
 #include <chrono>
 
-const uint32_t WIDTH = 800;
-const uint32_t HEIGHT = 600;
+#include "app.h"
 
-void windowResizeCallback(GLFWwindow *window, int width, int height) {
-	App *app = reinterpret_cast<App *>(glfwGetWindowUserPointer(window));
+void windowResizeCallback(GLFWwindow *p_window, int p_width, int p_height) {
+	App *app = reinterpret_cast<App *>(glfwGetWindowUserPointer(p_window));
 
-	glfwGetFramebufferSize(window, &width, &height);
-	app->windowResize(width, height);
+	glfwGetFramebufferSize(p_window, &p_width, &p_height);
+	app->windowResize(p_width, p_height);
 }
 
-void cursorMotionCallback(GLFWwindow *window, double x, double y) {
-	App *app = reinterpret_cast<App *>(glfwGetWindowUserPointer(window));
-	app->cameraMove(x, y);
+void cursorMotionCallback(GLFWwindow *p_window, double p_x, double p_y) {
+	App *app = reinterpret_cast<App *>(glfwGetWindowUserPointer(p_window));
+	app->cameraMove(p_x, p_y);
 }
 
-void App::_windowInit(uint32_t p_width, uint32_t p_height) {
+void App::windowCreate(uint32_t p_width, uint32_t p_height) {
 	_window = glfwCreateWindow(p_width, p_height, "App", nullptr, nullptr);
 
 	if (glfwRawMouseMotionSupported())
 		glfwSetInputMode(_window, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
 
-	// glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+	glfwSetInputMode(_window, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
 
 	glfwSetWindowUserPointer(_window, this);
 	glfwSetFramebufferSizeCallback(_window, windowResizeCallback);
 	glfwSetCursorPosCallback(_window, cursorMotionCallback);
+
+	_renderingDevice->windowCreate(_window, p_width, p_height);
 }
 
-void App::init(bool p_validationLayers) {
-	_windowInit(WIDTH, HEIGHT);
-
-	_renderingDevice = new RenderingDevice(p_validationLayers);
-	_renderingDevice->windowCreate(_window, WIDTH, HEIGHT);
+void App::windowResize(uint32_t p_width, uint32_t p_height) {
+	_renderingDevice->windowResize(p_width, p_height);
 }
 
 void App::run() {
 	while (!glfwWindowShouldClose(_window)) {
+		glfwPollEvents();
+
 		std::chrono::high_resolution_clock timer;
 		auto start = timer.now();
 
-		glfwPollEvents();
 		_renderingDevice->draw();
 
 		auto stop = timer.now();
@@ -51,19 +49,19 @@ void App::run() {
 	_renderingDevice->waitIdle();
 }
 
-void App::windowResize(uint32_t p_width, uint32_t p_height) {
-	_renderingDevice->windowResize(p_width, p_height);
-}
-
 void App::cameraMove(int p_x, int p_y) {
 }
 
-App::App() {
+App::App(bool p_validationLayers) {
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+
+	_renderingDevice = new RenderingDevice(p_validationLayers);
 }
 
 App::~App() {
+	free(_renderingDevice);
+
 	if (_window) {
 		glfwDestroyWindow(_window);
 	}

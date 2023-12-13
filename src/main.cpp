@@ -4,6 +4,9 @@
 
 #include "app.h"
 
+const uint32_t WIDTH = 800;
+const uint32_t HEIGHT = 600;
+
 int main(int argc, char *argv[]) {
 	bool validationLayers = false;
 
@@ -14,9 +17,9 @@ int main(int argc, char *argv[]) {
 	}
 
 	try {
-		App *app = new App();
+		App *app = new App(validationLayers);
 
-		app->init(validationLayers);
+		app->windowCreate(WIDTH, HEIGHT);
 		app->run();
 
 		free(app);
