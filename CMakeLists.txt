@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 3.5)
 project(3d-renderer C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(Vulkan REQUIRED)
@@ -69,9 +70,17 @@ set(DEPENDENCIES thirdparty/vma/vk_mem_alloc.cpp thirdparty/stb/stb_image.cpp
                  thirdparty/tiny_obj/tiny_obj_loader.cpp)
 
 include_directories(
-  thirdparty/vma thirdparty/stb thirdparty/tiny_obj thirdparty/imgui
-  thirdparty/imgui/backends thirdparty/glslang)
+  thirdparty/vma
+  thirdparty/stb
+  thirdparty/tiny_obj
+  thirdparty/imgui
+  thirdparty/imgui/backends
+  thirdparty/glslang
+  lib/fastgltf/include)
+
+add_subdirectory(lib/fastgltf)
 
 add_executable(renderer ${SOURCES} ${SHADERS} ${DEPENDENCIES} ${IMGUI_SOURCES}
                         ${GLSL_SOURCES})
-target_link_libraries(renderer ${LIBRARIES})
+
+target_link_libraries(renderer ${LIBRARIES} fastgltf)
