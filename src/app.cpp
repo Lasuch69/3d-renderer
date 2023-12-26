@@ -40,6 +40,21 @@ void App::run() {
 		std::chrono::high_resolution_clock timer;
 		auto start = timer.now();
 
+		float x = glfwGetKey(_window, GLFW_KEY_A) - glfwGetKey(_window, GLFW_KEY_D);
+		float y = glfwGetKey(_window, GLFW_KEY_W) - glfwGetKey(_window, GLFW_KEY_S);
+
+		glm::vec3 front;
+		front.x = cos(glm::radians(_rotX)) * cos(glm::radians(_rotY));
+		front.y = sin(glm::radians(_rotX)) * cos(glm::radians(_rotY));
+		front.z = sin(glm::radians(_rotY));
+		front = glm::normalize(front);
+
+		glm::vec3 direction = (y * glm::normalize(glm::cross(front, glm::vec3(0.0f, 0.0f, 1.0f)))) + (x * front);
+
+		glm::mat4 t = _camera->getTransform();
+		t = glm::translate(t, direction * 5.f * (float)_deltaTime);
+		_camera->setTransform(t);
+
 		_renderingDevice->draw();
 
 		auto stop = timer.now();
@@ -49,14 +64,33 @@ void App::run() {
 	_renderingDevice->waitIdle();
 }
 
-void App::cameraMove(int p_x, int p_y) {
+void App::cameraMove(double p_x, double p_y) {
+	double x = (p_x - _lastX) * 0.005;
+	double y = (p_y - _lastY) * 0.005;
+
+	_rotX -= x;
+	_rotY = glm::clamp(float(_rotY + y), glm::radians(-89.9f), glm::radians(89.9f));
+
+	glm::mat4 t = glm::mat4(1.0f);
+	t = glm::translate(t, _camera->getPosition());
+	t = glm::rotate(t, _rotX, glm::vec3(0.0f, 0.0f, 1.0f));
+	t = glm::rotate(t, _rotY, glm::vec3(1.0f, 0.0f, 0.0f));
+
+	_camera->setTransform(t);
+
+	_lastX = p_x;
+	_lastY = p_y;
 }
 
 App::App(bool p_validationLayers) {
 	glfwInit();
 	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
 
+	_camera = new Camera();
+	_camera->setPosition(glm::vec3(0.0f, 0.0f, 0.5f));
+
 	_renderingDevice = new RenderingDevice(p_validationLayers);
+	_renderingDevice->setCamera(_camera);
 }
 
 App::~App() {

@@ -8,6 +8,7 @@
 #include <string>
 #include <unordered_map>
 
+#include "../camera.h"
 #include "mesh.h"
 #include "vulkan_context.h"
 
@@ -43,6 +44,8 @@ struct RenderObject {
 class RenderingDevice {
 	VulkanContext *_context;
 	uint32_t _currentFrame = 0;
+
+	Camera *_camera;
 
 	VmaAllocator _allocator;
 
@@ -96,6 +99,8 @@ class RenderingDevice {
 	void _endSingleTimeCommands(VkCommandBuffer p_commandBuffer);
 
 public:
+	void setCamera(Camera *p_camera);
+
 	void windowCreate(GLFWwindow *p_window, uint32_t p_width, uint32_t p_height);
 	void windowResize(uint32_t p_width, uint32_t p_height);
 

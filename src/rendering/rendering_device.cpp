@@ -491,14 +491,11 @@ void RenderingDevice::_drawObjects(VkCommandBuffer p_commandBuffer, RenderObject
 
 void RenderingDevice::_updateUniformBuffer(uint32_t p_currentFrame) {
 	VkExtent2D extent = _context->getSwapchainExtent();
-
-	glm::mat4 view = glm::lookAt(glm::vec3(3.0f, 3.0f, 3.0f), glm::vec3(0.0f), glm::vec3(0.0f, 0.0f, 1.0f));
-	glm::mat4 projection = glm::perspective(glm::radians(45.0f), (float)extent.width / (float)extent.height, 0.1f, 100.0f);
-	projection[1][1] *= -1;
+	float aspect = (float)extent.width / (float)extent.height;
 
 	UniformBufferObject ubo{};
-	ubo.view = view;
-	ubo.proj = projection;
+	ubo.view = _camera->getViewMatrix();
+	ubo.proj = _camera->getProjectionMatrix(aspect);
 
 	memcpy(_uniformAllocInfos[_currentFrame].pMappedData, &ubo, sizeof(ubo));
 }
@@ -806,6 +803,10 @@ void RenderingDevice::_endSingleTimeCommands(VkCommandBuffer p_commandBuffer) {
 	vkQueueWaitIdle(_context->getGraphicsQueue());
 
 	vkFreeCommandBuffers(_context->getDevice(), _context->getCommandPool(), 1, &p_commandBuffer);
+}
+
+void RenderingDevice::setCamera(Camera *p_camera) {
+	_camera = p_camera;
 }
 
 void RenderingDevice::windowCreate(GLFWwindow *p_window, uint32_t p_width, uint32_t p_height) {

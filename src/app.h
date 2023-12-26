@@ -1,11 +1,17 @@
 #ifndef APP_H
 #define APP_H
 
+#include "camera.h"
 #include "rendering/rendering_device.h"
 
 class App {
 private:
+	double _lastX, _lastY;
+	float _rotX, _rotY;
+
 	double _deltaTime = 0.0;
+
+	Camera *_camera;
 
 	GLFWwindow *_window;
 	RenderingDevice *_renderingDevice;
@@ -16,7 +22,7 @@ public:
 
 	void run();
 
-	void cameraMove(int p_x, int p_y);
+	void cameraMove(double p_x, double p_y);
 
 	App(bool p_validationLayers);
 	~App();
