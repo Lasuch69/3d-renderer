@@ -1,8 +1,9 @@
 #ifndef LOADER_H
 #define LOADER_H
 
-#include "mesh.h"
 #include <vector>
+
+#include "rendering/mesh.h"
 
 struct Image {
 	uint32_t width, height;

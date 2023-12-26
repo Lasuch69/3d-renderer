@@ -6,7 +6,7 @@
 #include <iostream>
 #include <stdexcept>
 
-#include "loader.h"
+#include "../loader.h"
 #include "rendering_device.h"
 #include "shaders/material.glsl.gen.h"
 #include "vulkan_context.h"

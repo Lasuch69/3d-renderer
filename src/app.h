@@ -1,7 +1,7 @@
 #ifndef APP_H
 #define APP_H
 
-#include "rendering_device.h"
+#include "rendering/rendering_device.h"
 
 class App {
 private:
