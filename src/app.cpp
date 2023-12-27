@@ -1,5 +1,9 @@
 #include <chrono>
 
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_vulkan.h>
+
 #include "app.h"
 
 void windowResizeCallback(GLFWwindow *p_window, int p_width, int p_height) {
@@ -34,6 +38,14 @@ void App::windowResize(uint32_t p_width, uint32_t p_height) {
 }
 
 void App::run() {
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	_io = &ImGui::GetIO();
+	_io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+	_io->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
+
+	_renderingDevice->initImGui(_window);
+
 	while (!glfwWindowShouldClose(_window)) {
 		glfwPollEvents();
 
@@ -54,6 +66,21 @@ void App::run() {
 		glm::mat4 t = _camera->getTransform();
 		t = glm::translate(t, direction * 5.f * (float)_deltaTime);
 		_camera->setTransform(t);
+
+		ImGui_ImplVulkan_NewFrame();
+		ImGui_ImplGlfw_NewFrame();
+		ImGui::NewFrame();
+
+		{
+			ImGui::Begin("Hello, world!");
+
+			ImGui::Text("%.1f FPS", _io->Framerate);
+			ImGui::Text("Delta time: %.4fms", _deltaTime * 1000.0);
+
+			ImGui::End();
+		}
+
+		ImGui::Render();
 
 		_renderingDevice->draw();
 

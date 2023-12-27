@@ -6,6 +6,8 @@
 
 class App {
 private:
+	ImGuiIO *_io;
+
 	double _lastX, _lastY;
 	float _rotX, _rotY;
 

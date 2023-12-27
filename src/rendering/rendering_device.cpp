@@ -6,6 +6,10 @@
 #include <iostream>
 #include <stdexcept>
 
+#include <imgui.h>
+#include <imgui_impl_glfw.h>
+#include <imgui_impl_vulkan.h>
+
 #include "../loader.h"
 #include "rendering_device.h"
 #include "shaders/material.glsl.gen.h"
@@ -38,7 +42,7 @@ void RenderingDevice::_initCommands() {
 }
 
 void RenderingDevice::_initDescriptors() {
-	std::array<VkDescriptorPoolSize, 2> poolSizes{};
+	std::array<VkDescriptorPoolSize, 3> poolSizes{};
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
@@ -46,11 +50,15 @@ void RenderingDevice::_initDescriptors() {
 	poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	poolSizes[1].descriptorCount = 1;
 
+	// ImGui
+	poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	poolSizes[2].descriptorCount = 1;
+
 	VkDescriptorPoolCreateInfo poolInfo{};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 	poolInfo.pPoolSizes = poolSizes.data();
-	poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) + 1;
+	poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) + 2;
 
 	if (vkCreateDescriptorPool(_context->getDevice(), &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create descriptor pool!");
@@ -127,6 +135,40 @@ void RenderingDevice::_initDescriptors() {
 	if (vkCreateDescriptorSetLayout(_context->getDevice(), &textureLayoutInfo, nullptr, &_textureSetLayout) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create texture set layout!");
 	}
+}
+
+static void check_vk_result(VkResult err) {
+	if (err == 0)
+		return;
+	fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
+	if (err < 0)
+		abort();
+}
+
+void RenderingDevice::initImGui(GLFWwindow *p_window) {
+	// Setup Platform/Renderer backends
+	ImGui_ImplGlfw_InitForVulkan(p_window, true);
+	ImGui_ImplVulkan_InitInfo init_info = {};
+	init_info.Instance = _context->getInstance();
+	init_info.PhysicalDevice = _context->getPhysicalDevice();
+	init_info.Device = _context->getDevice();
+	init_info.QueueFamily = _context->getGraphicsQueueFamily();
+	init_info.Queue = _context->getGraphicsQueue();
+	init_info.PipelineCache = nullptr;
+	init_info.DescriptorPool = _descriptorPool;
+	init_info.Subpass = 0;
+	init_info.MinImageCount = 2;
+	init_info.ImageCount = 2;
+	init_info.MSAASamples = _context->getMsaaSamples();
+	init_info.Allocator = nullptr;
+	init_info.CheckVkResultFn = check_vk_result;
+	ImGui_ImplVulkan_Init(&init_info, _context->getRenderPass());
+
+	VkCommandBuffer commandBuffer = _beginSingleTimeCommands();
+	ImGui_ImplVulkan_CreateFontsTexture(commandBuffer);
+	_endSingleTimeCommands(commandBuffer);
+
+	ImGui_ImplVulkan_DestroyFontUploadObjects();
 }
 
 void RenderingDevice::_initPipelines() {
@@ -883,6 +925,8 @@ void RenderingDevice::draw() {
 	vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
 	_drawObjects(commandBuffer, _renderObjects.data(), _renderObjects.size());
+
+	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
 
 	vkCmdEndRenderPass(commandBuffer);
 

@@ -104,6 +104,8 @@ public:
 	void windowCreate(GLFWwindow *p_window, uint32_t p_width, uint32_t p_height);
 	void windowResize(uint32_t p_width, uint32_t p_height);
 
+	void initImGui(GLFWwindow *p_window);
+
 	void draw();
 	void waitIdle();
 
