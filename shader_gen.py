@@ -190,36 +190,7 @@ public:
         fd.write(shader_template)
 
 
-def step(dir: str, files: list, recursive: bool):
-    entries = os.scandir(dir)
-
-    for entry in entries:
-        if entry.is_dir():
-            if recursive:
-                step(entry.path, files, recursive)
-            continue
-
-        if entry.name.split('.')[-1] != "glsl":
-            continue
-
-        files.append(entry.path)
-
-
-def scan(path: str, recursive: bool = False) -> list:
-    files: list = []
-    step(path, files, recursive)
-
-    return files
-
-
 def build_headers(source):
     for x in source:
         build_header(filename=str(x))
 
-
-def main():
-    build_headers(scan('src', True))
-    print("Shaders generated!")
-
-
-main()
