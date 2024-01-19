@@ -52,7 +52,7 @@ class RenderingDevice {
 	VkCommandBuffer _commandBuffers[MAX_FRAMES_IN_FLIGHT];
 
 	VkDescriptorPool _descriptorPool;
-	VkDescriptorSetLayout _globalSetLayout;
+	VkDescriptorSetLayout _uniformSetLayout;
 	VkDescriptorSetLayout _textureSetLayout;
 
 	AllocatedBuffer _uniformBuffers[MAX_FRAMES_IN_FLIGHT];
@@ -94,6 +94,9 @@ class RenderingDevice {
 
 	AllocatedImage _createImage(uint32_t p_width, uint32_t p_height, uint32_t p_mipmaps, VkSampleCountFlagBits p_numSamples, VkFormat p_format, VkImageUsageFlags p_usage);
 	VkImageView _createImageView(VkImage p_image, VkFormat p_format, VkImageAspectFlags p_aspectFlags, uint32_t p_mipmaps);
+
+	VkPipelineLayout _createPipelineLayout(VkDescriptorSetLayout *p_setLayouts, uint32_t p_layoutCount, VkPushConstantRange *p_pushConstants, uint32_t p_constantCount);
+	VkPipeline _createPipeline(VkPipelineLayout p_layout, VkShaderModule p_vertex, VkShaderModule p_fragment);
 
 	VkCommandBuffer _beginSingleTimeCommands();
 	void _endSingleTimeCommands(VkCommandBuffer p_commandBuffer);
