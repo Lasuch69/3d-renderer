@@ -6,19 +6,12 @@
 renderer
 *.o
 
-# cmake
-.cmake
-CMakeLists.txt.user
-CMakeCache.txt
-CMakeFiles
-CMakeScripts
-Testing
-Makefile
-cmake_install.cmake
-install_manifest.txt
+# scons
+__pycache__
 compile_commands.json
-CTestTestfile.cmake
-_deps
+config.log
+.sconf_temp
+.sconsign.dblite
 
 # imgui
 imgui.ini
