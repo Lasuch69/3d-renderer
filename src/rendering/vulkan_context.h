@@ -81,17 +81,11 @@ private:
 
 	VkCommandPool _commandPool;
 
-	VkSampleCountFlagBits _msaaSamples = VK_SAMPLE_COUNT_8_BIT;
-
 	VkFormat _colorFormat;
 	VkFormat _depthFormat;
 
 	VkColorSpaceKHR _colorSpace;
 	uint32_t _swapchainImageCount = 0;
-
-	VkImage _colorImage;
-	VkDeviceMemory _colorImageMemory;
-	VkImageView _colorImageView;
 
 	VkImage _depthImage;
 	VkDeviceMemory _depthImageMemory;
@@ -141,8 +135,6 @@ public:
 	VkInstance getInstance() { return _instance; }
 	VkPhysicalDevice getPhysicalDevice() { return _physicalDevice; }
 	VkDevice getDevice() { return _device; }
-
-	VkSampleCountFlagBits getMsaaSamples() { return _msaaSamples; }
 
 	VkQueue getGraphicsQueue() { return _graphicsQueue; }
 	VkQueue getPresentQueue() { return _presentQueue; }
