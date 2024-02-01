@@ -116,7 +116,7 @@ App::App(bool p_validationLayers) {
 	_camera = new Camera();
 	_camera->setPosition(glm::vec3(0.0f, 0.0f, 0.5f));
 
-	_renderingDevice = new RenderingDevice(p_validationLayers);
+	_renderingDevice = new Renderer(p_validationLayers);
 	_renderingDevice->setCamera(_camera);
 }
 

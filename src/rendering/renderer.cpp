@@ -11,12 +11,12 @@
 #include <imgui_impl_vulkan.h>
 
 #include "../loader.h"
-#include "rendering_device.h"
+#include "renderer.h"
 #include "vulkan_context.h"
 
 #include "shaders/material.glsl.gen.h"
 
-void RenderingDevice::_initAllocator() {
+void Renderer::_initAllocator() {
 	VmaAllocatorCreateInfo allocatorCreateInfo = {};
 	allocatorCreateInfo.vulkanApiVersion = VK_API_VERSION_1_0;
 	allocatorCreateInfo.instance = _context->getInstance();
@@ -28,7 +28,7 @@ void RenderingDevice::_initAllocator() {
 	}
 }
 
-void RenderingDevice::_initCommands() {
+void Renderer::_initCommands() {
 	VkCommandBufferAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	allocInfo.commandPool = _context->getCommandPool();
@@ -42,7 +42,7 @@ void RenderingDevice::_initCommands() {
 	}
 }
 
-void RenderingDevice::_initDescriptors() {
+void Renderer::_initDescriptors() {
 	std::array<VkDescriptorPoolSize, 3> poolSizes{};
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
@@ -146,7 +146,7 @@ static void check_vk_result(VkResult err) {
 		abort();
 }
 
-void RenderingDevice::initImGui(GLFWwindow *p_window) {
+void Renderer::initImGui(GLFWwindow *p_window) {
 	// Setup Platform/Renderer backends
 	ImGui_ImplGlfw_InitForVulkan(p_window, true);
 	ImGui_ImplVulkan_InitInfo init_info = {};
@@ -172,7 +172,7 @@ void RenderingDevice::initImGui(GLFWwindow *p_window) {
 	ImGui_ImplVulkan_DestroyFontUploadObjects();
 }
 
-void RenderingDevice::_initPipelines() {
+void Renderer::_initPipelines() {
 	MaterialShaderRD materialShader;
 
 	std::vector<uint32_t> spirv = materialShader.getVertexCode();
@@ -216,7 +216,7 @@ void RenderingDevice::_initPipelines() {
 	_createMaterial("material", materialPipeline, materialPipelineLayout);
 }
 
-void RenderingDevice::_initScene() {
+void Renderer::_initScene() {
 	Material *material = _getMaterial("material");
 
 	RenderObject cube;
@@ -267,7 +267,7 @@ void RenderingDevice::_initScene() {
 	vkUpdateDescriptorSets(_context->getDevice(), 1, &descriptorWrite, 0, nullptr);
 }
 
-void RenderingDevice::_loadMeshes() {
+void Renderer::_loadMeshes() {
 	Mesh cube = Loader::load_mesh("models/cube.obj");
 	Mesh sphere = Loader::load_mesh("models/sphere.obj");
 
@@ -278,14 +278,14 @@ void RenderingDevice::_loadMeshes() {
 	_meshes["sphere"] = sphere;
 }
 
-void RenderingDevice::_loadTextures() {
+void Renderer::_loadTextures() {
 	Image image = Loader::load_image("textures/raw_plank_wall_diff_1k.png");
 
 	Texture texture = _createTexture(image.width, image.height, image.format, image.data);
 	_textures["texture"] = texture;
 }
 
-void RenderingDevice::_uploadMesh(Mesh &p_mesh) {
+void Renderer::_uploadMesh(Mesh &p_mesh) {
 	// vertex
 	VkDeviceSize vertexBufferSize = sizeof(p_mesh.vertices[0]) * p_mesh.vertices.size();
 
@@ -321,7 +321,7 @@ void RenderingDevice::_uploadMesh(Mesh &p_mesh) {
 	vmaDestroyBuffer(_allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 }
 
-Material *RenderingDevice::_createMaterial(const std::string &p_name, VkPipeline p_pipeline, VkPipelineLayout p_pipelineLayout) {
+Material *Renderer::_createMaterial(const std::string &p_name, VkPipeline p_pipeline, VkPipelineLayout p_pipelineLayout) {
 	Material mat;
 
 	mat.pipeline = p_pipeline;
@@ -331,7 +331,7 @@ Material *RenderingDevice::_createMaterial(const std::string &p_name, VkPipeline
 	return &_materials[p_name];
 }
 
-Mesh *RenderingDevice::_getMesh(const std::string &p_name) {
+Mesh *Renderer::_getMesh(const std::string &p_name) {
 	// search for the object, and return nullptr if not found
 	auto it = _meshes.find(p_name);
 	if (it == _meshes.end()) {
@@ -341,7 +341,7 @@ Mesh *RenderingDevice::_getMesh(const std::string &p_name) {
 	}
 }
 
-Material *RenderingDevice::_getMaterial(const std::string &p_name) {
+Material *Renderer::_getMaterial(const std::string &p_name) {
 	// search for the object, and return nullptr if not found
 	auto it = _materials.find(p_name);
 	if (it == _materials.end()) {
@@ -351,7 +351,7 @@ Material *RenderingDevice::_getMaterial(const std::string &p_name) {
 	}
 }
 
-Texture *RenderingDevice::_getTexture(const std::string &p_name) {
+Texture *Renderer::_getTexture(const std::string &p_name) {
 	// search for the object, and return nullptr if not found
 	auto it = _textures.find(p_name);
 	if (it == _textures.end()) {
@@ -361,7 +361,7 @@ Texture *RenderingDevice::_getTexture(const std::string &p_name) {
 	}
 }
 
-void RenderingDevice::_drawObjects(VkCommandBuffer p_commandBuffer, RenderObject *p_renderObjects, uint32_t p_count) {
+void Renderer::_drawObjects(VkCommandBuffer p_commandBuffer, RenderObject *p_renderObjects, uint32_t p_count) {
 	Mesh *lastMesh = nullptr;
 	Material *lastMaterial = nullptr;
 
@@ -416,7 +416,7 @@ void RenderingDevice::_drawObjects(VkCommandBuffer p_commandBuffer, RenderObject
 	}
 }
 
-void RenderingDevice::_updateUniformBuffer(uint32_t p_currentFrame) {
+void Renderer::_updateUniformBuffer(uint32_t p_currentFrame) {
 	VkExtent2D extent = _context->getSwapchainExtent();
 	float aspect = (float)extent.width / (float)extent.height;
 
@@ -427,7 +427,7 @@ void RenderingDevice::_updateUniformBuffer(uint32_t p_currentFrame) {
 	memcpy(_uniformAllocInfos[_currentFrame].pMappedData, &ubo, sizeof(ubo));
 }
 
-AllocatedBuffer RenderingDevice::_createBuffer(VkDeviceSize p_size, VkBufferUsageFlags p_usage, VmaAllocationInfo &p_allocInfo) {
+AllocatedBuffer Renderer::_createBuffer(VkDeviceSize p_size, VkBufferUsageFlags p_usage, VmaAllocationInfo &p_allocInfo) {
 	VkBufferCreateInfo bufCreateInfo{};
 	bufCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
 	bufCreateInfo.size = p_size;
@@ -445,7 +445,7 @@ AllocatedBuffer RenderingDevice::_createBuffer(VkDeviceSize p_size, VkBufferUsag
 	return buffer;
 }
 
-void RenderingDevice::_copyBuffer(VkBuffer &p_srcBuffer, VkBuffer &p_dstBuffer, VkDeviceSize p_size) {
+void Renderer::_copyBuffer(VkBuffer &p_srcBuffer, VkBuffer &p_dstBuffer, VkDeviceSize p_size) {
 	VkCommandBuffer commandBuffer = _beginSingleTimeCommands();
 
 	VkBufferCopy bufCopy{};
@@ -458,7 +458,7 @@ void RenderingDevice::_copyBuffer(VkBuffer &p_srcBuffer, VkBuffer &p_dstBuffer, 
 	_endSingleTimeCommands(commandBuffer);
 }
 
-Texture RenderingDevice::_createTexture(uint32_t p_width, uint32_t p_height, VkFormat p_format, const std::vector<uint8_t> &p_data) {
+Texture Renderer::_createTexture(uint32_t p_width, uint32_t p_height, VkFormat p_format, const std::vector<uint8_t> &p_data) {
 	uint8_t mipmaps = static_cast<uint32_t>(std::floor(std::log2(std::max(p_width, p_height)))) + 1;
 
 	AllocatedImage textureImage = _createImage(p_width, p_height, mipmaps, VK_SAMPLE_COUNT_1_BIT, p_format, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
@@ -561,7 +561,7 @@ Texture RenderingDevice::_createTexture(uint32_t p_width, uint32_t p_height, VkF
 	return Texture{ textureImage, textureImageView, textureSampler };
 }
 
-void RenderingDevice::_generateMipmaps(VkImage p_image, VkFormat p_imageFormat, int32_t p_texWidth, int32_t p_texHeight, uint32_t p_mipLevels) {
+void Renderer::_generateMipmaps(VkImage p_image, VkFormat p_imageFormat, int32_t p_texWidth, int32_t p_texHeight, uint32_t p_mipLevels) {
 	// check if image format supports linear blitting
 	VkFormatProperties formatProperties;
 	vkGetPhysicalDeviceFormatProperties(_context->getPhysicalDevice(), p_imageFormat, &formatProperties);
@@ -650,7 +650,7 @@ void RenderingDevice::_generateMipmaps(VkImage p_image, VkFormat p_imageFormat, 
 	_endSingleTimeCommands(commandBuffer);
 }
 
-AllocatedImage RenderingDevice::_createImage(uint32_t p_width, uint32_t p_height, uint32_t p_mipmaps, VkSampleCountFlagBits p_numSamples, VkFormat p_format, VkImageUsageFlags p_usage) {
+AllocatedImage Renderer::_createImage(uint32_t p_width, uint32_t p_height, uint32_t p_mipmaps, VkSampleCountFlagBits p_numSamples, VkFormat p_format, VkImageUsageFlags p_usage) {
 	VkImageCreateInfo imageInfo{};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageInfo.imageType = VK_IMAGE_TYPE_2D;
@@ -679,7 +679,7 @@ AllocatedImage RenderingDevice::_createImage(uint32_t p_width, uint32_t p_height
 	return allocatedImage;
 }
 
-VkImageView RenderingDevice::_createImageView(VkImage p_image, VkFormat p_format, VkImageAspectFlags p_aspectFlags, uint32_t p_mipmaps) {
+VkImageView Renderer::_createImageView(VkImage p_image, VkFormat p_format, VkImageAspectFlags p_aspectFlags, uint32_t p_mipmaps) {
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
 	viewInfo.image = p_image;
@@ -699,7 +699,7 @@ VkImageView RenderingDevice::_createImageView(VkImage p_image, VkFormat p_format
 	return imageView;
 }
 
-VkPipelineLayout RenderingDevice::_createPipelineLayout(VkDescriptorSetLayout *p_setLayouts, uint32_t p_layoutCount, VkPushConstantRange *p_pushConstants, uint32_t p_constantCount) {
+VkPipelineLayout Renderer::_createPipelineLayout(VkDescriptorSetLayout *p_setLayouts, uint32_t p_layoutCount, VkPushConstantRange *p_pushConstants, uint32_t p_constantCount) {
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
 	pipelineLayoutInfo.setLayoutCount = p_layoutCount;
@@ -715,7 +715,7 @@ VkPipelineLayout RenderingDevice::_createPipelineLayout(VkDescriptorSetLayout *p
 	return pipelineLayout;
 }
 
-VkPipeline RenderingDevice::_createPipeline(VkPipelineLayout p_layout, VkShaderModule p_vertex, VkShaderModule p_fragment) {
+VkPipeline Renderer::_createPipeline(VkPipelineLayout p_layout, VkShaderModule p_vertex, VkShaderModule p_fragment) {
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
 	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -822,7 +822,7 @@ VkPipeline RenderingDevice::_createPipeline(VkPipelineLayout p_layout, VkShaderM
 	return pipeline;
 }
 
-VkCommandBuffer RenderingDevice::_beginSingleTimeCommands() {
+VkCommandBuffer Renderer::_beginSingleTimeCommands() {
 	VkCommandBufferAllocateInfo allocInfo{};
 	allocInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_ALLOCATE_INFO;
 	allocInfo.level = VK_COMMAND_BUFFER_LEVEL_PRIMARY;
@@ -841,7 +841,7 @@ VkCommandBuffer RenderingDevice::_beginSingleTimeCommands() {
 	return commandBuffer;
 }
 
-void RenderingDevice::_endSingleTimeCommands(VkCommandBuffer p_commandBuffer) {
+void Renderer::_endSingleTimeCommands(VkCommandBuffer p_commandBuffer) {
 	vkEndCommandBuffer(p_commandBuffer);
 
 	VkSubmitInfo submitInfo{};
@@ -855,11 +855,11 @@ void RenderingDevice::_endSingleTimeCommands(VkCommandBuffer p_commandBuffer) {
 	vkFreeCommandBuffers(_context->getDevice(), _context->getCommandPool(), 1, &p_commandBuffer);
 }
 
-void RenderingDevice::setCamera(Camera *p_camera) {
+void Renderer::setCamera(Camera *p_camera) {
 	_camera = p_camera;
 }
 
-void RenderingDevice::windowCreate(GLFWwindow *p_window, uint32_t p_width, uint32_t p_height) {
+void Renderer::windowCreate(GLFWwindow *p_window, uint32_t p_width, uint32_t p_height) {
 	_context->windowCreate(p_window, p_width, p_height);
 
 	_initAllocator();
@@ -884,11 +884,11 @@ void RenderingDevice::windowCreate(GLFWwindow *p_window, uint32_t p_width, uint3
 	std::cout << "Scene initialized!\n";
 }
 
-void RenderingDevice::windowResize(uint32_t p_width, uint32_t p_height) {
+void Renderer::windowResize(uint32_t p_width, uint32_t p_height) {
 	_context->windowResize(p_width, p_height);
 }
 
-void RenderingDevice::draw() {
+void Renderer::draw() {
 	SyncObject sync = _context->getSyncObject(_currentFrame);
 	VkCommandBuffer commandBuffer = _commandBuffers[_currentFrame];
 
@@ -945,14 +945,14 @@ void RenderingDevice::draw() {
 	_currentFrame = (_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
 }
 
-void RenderingDevice::waitIdle() {
+void Renderer::waitIdle() {
 	vkDeviceWaitIdle(_context->getDevice());
 }
 
-RenderingDevice::RenderingDevice(bool p_validationLayers) {
+Renderer::Renderer(bool p_validationLayers) {
 	_context = new VulkanContext(p_validationLayers);
 }
 
-RenderingDevice::~RenderingDevice() {
+Renderer::~Renderer() {
 	free(_context);
 }

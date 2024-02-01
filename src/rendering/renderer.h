@@ -41,7 +41,7 @@ struct RenderObject {
 	glm::mat4 transformMatrix;
 };
 
-class RenderingDevice {
+class Renderer {
 	VulkanContext *_context;
 	uint32_t _currentFrame = 0;
 
@@ -112,8 +112,8 @@ public:
 	void draw();
 	void waitIdle();
 
-	RenderingDevice(bool p_validationLayers);
-	~RenderingDevice();
+	Renderer(bool p_validationLayers);
+	~Renderer();
 };
 
 #endif // !RENDERING_DEVICE_H

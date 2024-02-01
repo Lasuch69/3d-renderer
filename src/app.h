@@ -2,7 +2,7 @@
 #define APP_H
 
 #include "camera.h"
-#include "rendering/rendering_device.h"
+#include "rendering/renderer.h"
 
 class App {
 private:
@@ -16,7 +16,7 @@ private:
 	Camera *_camera;
 
 	GLFWwindow *_window;
-	RenderingDevice *_renderingDevice;
+	Renderer *_renderingDevice;
 
 public:
 	void windowCreate(uint32_t p_width, uint32_t p_height);
