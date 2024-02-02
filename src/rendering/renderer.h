@@ -1,12 +1,12 @@
-#ifndef RENDERING_DEVICE_H
-#define RENDERING_DEVICE_H
+#ifndef RENDERER_H
+#define RENDERER_H
 
-#include <GLFW/glfw3.h>
 #include <cstdint>
-#include <imgui.h>
-
 #include <string>
 #include <unordered_map>
+
+#include <GLFW/glfw3.h>
+#include <imgui.h>
 
 #include "../camera.h"
 #include "mesh.h"
@@ -80,46 +80,46 @@ class Renderer {
 	void _loadMeshes();
 	void _loadTextures();
 
-	void _uploadMesh(Mesh &p_mesh);
-	Material *_createMaterial(const std::string &p_name, VkPipeline p_pipeline, VkPipelineLayout p_pipelineLayout);
+	void _uploadMesh(Mesh &mesh);
+	Material *_createMaterial(const std::string &name, VkPipeline pipeline, VkPipelineLayout pipelineLayout);
 
-	Mesh *_getMesh(const std::string &p_name);
-	Material *_getMaterial(const std::string &p_name);
-	Texture *_getTexture(const std::string &p_name);
+	Mesh *_getMesh(const std::string &name);
+	Material *_getMaterial(const std::string &name);
+	Texture *_getTexture(const std::string &name);
 
-	void _drawObjects(VkCommandBuffer p_commandBuffer, RenderObject *p_renderObjects, uint32_t p_count);
+	void _drawObjects(VkCommandBuffer commandBuffer, RenderObject *pRenderObjects, uint32_t count);
 
-	void _updateUniformBuffer(uint32_t p_currentFrame);
+	void _updateUniformBuffer(uint32_t currentFrame);
 	void _updateSubpassSet();
 
-	AllocatedBuffer _createBuffer(VkDeviceSize p_size, VkBufferUsageFlags p_usage, VmaAllocationInfo &p_allocInfo);
-	void _copyBuffer(VkBuffer &p_srcBuffer, VkBuffer &p_dstBuffer, VkDeviceSize p_size);
+	AllocatedBuffer _createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationInfo &allocInfo);
+	void _copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
 
-	Texture _createTexture(uint32_t p_width, uint32_t p_height, VkFormat p_format, const std::vector<uint8_t> &p_data);
-	void _generateMipmaps(VkImage p_image, VkFormat p_imageFormat, int32_t p_texWidth, int32_t p_texHeight, uint32_t p_mipLevels);
+	Texture _createTexture(uint32_t width, uint32_t height, VkFormat format, const std::vector<uint8_t> &data);
+	bool _generateMipmaps(int32_t width, int32_t height, VkFormat format, uint32_t mipmaps, VkImage image);
 
-	AllocatedImage _createImage(uint32_t p_width, uint32_t p_height, uint32_t p_mipmaps, VkSampleCountFlagBits p_numSamples, VkFormat p_format, VkImageUsageFlags p_usage);
-	VkImageView _createImageView(VkImage p_image, VkFormat p_format, VkImageAspectFlags p_aspectFlags, uint32_t p_mipmaps);
+	AllocatedImage _createImage(uint32_t width, uint32_t height, VkFormat format, uint32_t mipmaps, VkImageUsageFlags usage);
+	VkImageView _createImageView(VkImage image, VkFormat format, uint32_t mipmaps, VkImageAspectFlags aspectFlags);
 
-	VkPipelineLayout _createPipelineLayout(VkDescriptorSetLayout *p_setLayouts, uint32_t p_layoutCount, VkPushConstantRange *p_pushConstants, uint32_t p_constantCount);
-	VkPipeline _createPipeline(VkPipelineLayout p_layout, VkShaderModule p_vertex, VkShaderModule p_fragment, uint32_t p_subpass);
+	VkPipelineLayout _createPipelineLayout(VkDescriptorSetLayout *pSetLayouts, uint32_t layoutCount, VkPushConstantRange *pPushConstants, uint32_t constantCount);
+	VkPipeline _createPipeline(VkPipelineLayout layout, VkShaderModule vertex, VkShaderModule fragment, uint32_t subpass);
 
 	VkCommandBuffer _beginSingleTimeCommands();
-	void _endSingleTimeCommands(VkCommandBuffer p_commandBuffer);
+	void _endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
 public:
-	void setCamera(Camera *p_camera);
+	void setCamera(Camera *pCamera);
 
-	void windowCreate(GLFWwindow *p_window, uint32_t p_width, uint32_t p_height);
-	void windowResize(uint32_t p_width, uint32_t p_height);
+	void windowCreate(GLFWwindow *pWindow, uint32_t width, uint32_t height);
+	void windowResize(uint32_t width, uint32_t height);
 
-	void initImGui(GLFWwindow *p_window);
+	void initImGui(GLFWwindow *pWindow);
 
 	void draw();
 	void waitIdle();
 
-	Renderer(bool p_validationLayers);
+	Renderer(bool useValidation);
 	~Renderer();
 };
 
-#endif // !RENDERING_DEVICE_H
+#endif // !RENDERER_H

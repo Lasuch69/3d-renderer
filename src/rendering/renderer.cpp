@@ -1,15 +1,10 @@
-#include <algorithm>
 #include <array>
-#include <cstdint>
 #include <cstdlib>
 #include <cstring>
-#include <iostream>
-#include <stdexcept>
 
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
-#include <vulkan/vulkan_core.h>
 
 #include "../loader.h"
 #include "renderer.h"
@@ -18,6 +13,18 @@
 #include "shaders/material.glsl.gen.h"
 #include "shaders/tonemapping.glsl.gen.h"
 
+VkShaderModule createShaderModule(VkDevice device, const std::vector<uint32_t> &spirv) {
+	VkShaderModuleCreateInfo createInfo{};
+	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	createInfo.codeSize = spirv.size() * sizeof(uint32_t);
+	createInfo.pCode = spirv.data();
+
+	VkShaderModule shaderModule;
+	VK_CHECK(vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule), "Failed to create shader module!");
+
+	return shaderModule;
+}
+
 void Renderer::_initAllocator() {
 	VmaAllocatorCreateInfo allocatorCreateInfo = {};
 	allocatorCreateInfo.vulkanApiVersion = VK_API_VERSION_1_0;
@@ -25,9 +32,7 @@ void Renderer::_initAllocator() {
 	allocatorCreateInfo.physicalDevice = _context->getPhysicalDevice();
 	allocatorCreateInfo.device = _context->getDevice();
 
-	if (vmaCreateAllocator(&allocatorCreateInfo, &_allocator) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create allocator!");
-	}
+	VK_CHECK(vmaCreateAllocator(&allocatorCreateInfo, &_allocator), "Failed to create allocator!");
 }
 
 void Renderer::_initCommands() {
@@ -38,9 +43,7 @@ void Renderer::_initCommands() {
 	allocInfo.commandBufferCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
 	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-		if (vkAllocateCommandBuffers(_context->getDevice(), &allocInfo, &_commandBuffers[i]) != VK_SUCCESS) {
-			throw std::runtime_error("failed to allocate command buffers!");
-		}
+		VK_CHECK(vkAllocateCommandBuffers(_context->getDevice(), &allocInfo, &_commandBuffers[i]), "Failed to allocate command buffers!");
 	}
 }
 
@@ -67,9 +70,7 @@ void Renderer::_initDescriptors() {
 	poolInfo.pPoolSizes = poolSizes.data();
 	poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) + 3;
 
-	if (vkCreateDescriptorPool(_context->getDevice(), &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create descriptor pool!");
-	}
+	VK_CHECK(vkCreateDescriptorPool(_context->getDevice(), &poolInfo, nullptr, &_descriptorPool), "Failed to create descriptor pool!");
 
 	// uniform set layout
 
@@ -85,9 +86,7 @@ void Renderer::_initDescriptors() {
 	uboLayoutInfo.bindingCount = 1;
 	uboLayoutInfo.pBindings = &uboBinding;
 
-	if (vkCreateDescriptorSetLayout(_context->getDevice(), &uboLayoutInfo, nullptr, &_uniformSetLayout) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create UBO set layout!");
-	}
+	VK_CHECK(vkCreateDescriptorSetLayout(_context->getDevice(), &uboLayoutInfo, nullptr, &_uniformSetLayout), "Failed to create uniform buffer object set layout!");
 
 	{
 		std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _uniformSetLayout);
@@ -99,9 +98,7 @@ void Renderer::_initDescriptors() {
 
 		std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> uniformSets{};
 
-		if (vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, uniformSets.data()) != VK_SUCCESS) {
-			throw std::runtime_error("failed to allocate uniform set!");
-		}
+		VK_CHECK(vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, uniformSets.data()), "Failed to allocate uniform set!");
 
 		for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
 			VkDeviceSize bufferSize = sizeof(UniformBufferObject);
@@ -127,7 +124,7 @@ void Renderer::_initDescriptors() {
 		}
 	}
 
-	// subpass input set layout
+	// subpass set layout
 
 	VkDescriptorSetLayoutBinding subpassBinding{};
 	subpassBinding.binding = 0;
@@ -141,9 +138,7 @@ void Renderer::_initDescriptors() {
 	subpassLayoutInfo.bindingCount = 1;
 	subpassLayoutInfo.pBindings = &subpassBinding;
 
-	if (vkCreateDescriptorSetLayout(_context->getDevice(), &subpassLayoutInfo, nullptr, &_subpassSetLayout) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create subpass set layout!");
-	}
+	VK_CHECK(vkCreateDescriptorSetLayout(_context->getDevice(), &subpassLayoutInfo, nullptr, &_subpassSetLayout), "Failed to create subpass set layout!");
 
 	{
 		VkDescriptorSetAllocateInfo allocInfo{};
@@ -152,9 +147,7 @@ void Renderer::_initDescriptors() {
 		allocInfo.descriptorSetCount = 1;
 		allocInfo.pSetLayouts = &_subpassSetLayout;
 
-		if (vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, &_subpassSet) != VK_SUCCESS) {
-			throw std::runtime_error("failed to allocate uniform set!");
-		}
+		VK_CHECK(vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, &_subpassSet), "Failed to allocate subpass set!");
 
 		VkDescriptorImageInfo imageInfo = {};
 		imageInfo.imageView = _context->getColorImageView(); // Replace with the actual image view of the previous subpass attachment
@@ -186,22 +179,23 @@ void Renderer::_initDescriptors() {
 	textureLayoutInfo.bindingCount = 1;
 	textureLayoutInfo.pBindings = &textureBinding;
 
-	if (vkCreateDescriptorSetLayout(_context->getDevice(), &textureLayoutInfo, nullptr, &_textureSetLayout) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create texture set layout!");
-	}
+	VK_CHECK(vkCreateDescriptorSetLayout(_context->getDevice(), &textureLayoutInfo, nullptr, &_textureSetLayout), "Failed to create texture set layout!");
 }
 
-static void check_vk_result(VkResult err) {
+// ImGui error check
+static void vkCheckResult(VkResult err) {
 	if (err == 0)
 		return;
-	fprintf(stderr, "[vulkan] Error: VkResult = %d\n", err);
+
+	fprintf(stderr, "ERROR: %d\n", err);
+
 	if (err < 0)
 		abort();
 }
 
-void Renderer::initImGui(GLFWwindow *p_window) {
+void Renderer::initImGui(GLFWwindow *pWindow) {
 	// Setup Platform/Renderer backends
-	ImGui_ImplGlfw_InitForVulkan(p_window, true);
+	ImGui_ImplGlfw_InitForVulkan(pWindow, true);
 	ImGui_ImplVulkan_InitInfo init_info = {};
 	init_info.Instance = _context->getInstance();
 	init_info.PhysicalDevice = _context->getPhysicalDevice();
@@ -215,7 +209,7 @@ void Renderer::initImGui(GLFWwindow *p_window) {
 	init_info.ImageCount = 2;
 	init_info.MSAASamples = VK_SAMPLE_COUNT_1_BIT;
 	init_info.Allocator = nullptr;
-	init_info.CheckVkResultFn = check_vk_result;
+	init_info.CheckVkResultFn = vkCheckResult;
 	ImGui_ImplVulkan_Init(&init_info, _context->getRenderPass());
 
 	VkCommandBuffer commandBuffer = _beginSingleTimeCommands();
@@ -226,85 +220,43 @@ void Renderer::initImGui(GLFWwindow *p_window) {
 }
 
 void Renderer::_initPipelines() {
-	MaterialShaderRD materialShader;
+	{
+		MaterialShaderRD materialShader;
 
-	std::vector<uint32_t> spirv = materialShader.getVertexCode();
+		VkShaderModule materialVertexModule = createShaderModule(_context->getDevice(), materialShader.getVertexCode());
+		VkShaderModule materialFragmentModule = createShaderModule(_context->getDevice(), materialShader.getFragmentCode());
 
-	// create shader module
-	VkShaderModuleCreateInfo createInfo{};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = spirv.size() * sizeof(uint32_t);
-	createInfo.pCode = spirv.data();
+		VkDescriptorSetLayout setLayouts[] = { _uniformSetLayout, _textureSetLayout };
 
-	VkShaderModule materialVertexModule;
-	if (vkCreateShaderModule(_context->getDevice(), &createInfo, nullptr, &materialVertexModule) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create vertex module!");
+		VkPushConstantRange pushConstant{};
+		pushConstant.offset = 0;
+		pushConstant.size = sizeof(MeshPushConstants);
+		pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
+
+		VkPipelineLayout materialPipelineLayout = _createPipelineLayout(setLayouts, 2, &pushConstant, 1);
+		VkPipeline materialPipeline = _createPipeline(materialPipelineLayout, materialVertexModule, materialFragmentModule, 0);
+
+		vkDestroyShaderModule(_context->getDevice(), materialFragmentModule, nullptr);
+		vkDestroyShaderModule(_context->getDevice(), materialVertexModule, nullptr);
+
+		_createMaterial("material", materialPipeline, materialPipelineLayout);
 	}
 
-	spirv = materialShader.getFragmentCode();
+	{
+		TonemappingShaderRD tonemappingShader;
 
-	// create shader module
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = spirv.size() * sizeof(uint32_t);
-	createInfo.pCode = spirv.data();
+		VkShaderModule tonemappingVertexModule = createShaderModule(_context->getDevice(), tonemappingShader.getVertexCode());
+		VkShaderModule tonemappingFragmentModule = createShaderModule(_context->getDevice(), tonemappingShader.getFragmentCode());
 
-	VkShaderModule materialFragmentModule;
-	if (vkCreateShaderModule(_context->getDevice(), &createInfo, nullptr, &materialFragmentModule) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create fragment module!");
+		VkPipelineLayout tonemappingPipelineLayout = _createPipelineLayout(&_subpassSetLayout, 1, nullptr, 0);
+		VkPipeline tonemappingPipeline = _createPipeline(tonemappingPipelineLayout, tonemappingVertexModule, tonemappingFragmentModule, 1);
+
+		vkDestroyShaderModule(_context->getDevice(), tonemappingFragmentModule, nullptr);
+		vkDestroyShaderModule(_context->getDevice(), tonemappingVertexModule, nullptr);
+
+		_tonemapping.pipelineLayout = tonemappingPipelineLayout;
+		_tonemapping.pipeline = tonemappingPipeline;
 	}
-
-	VkDescriptorSetLayout setLayouts[] = { _uniformSetLayout, _textureSetLayout };
-
-	VkPushConstantRange pushConstant{};
-	pushConstant.offset = 0;
-	pushConstant.size = sizeof(MeshPushConstants);
-	pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
-
-	VkPipelineLayout materialPipelineLayout = _createPipelineLayout(setLayouts, 2, &pushConstant, 1);
-	VkPipeline materialPipeline = _createPipeline(materialPipelineLayout, materialVertexModule, materialFragmentModule, 0);
-
-	vkDestroyShaderModule(_context->getDevice(), materialFragmentModule, nullptr);
-	vkDestroyShaderModule(_context->getDevice(), materialVertexModule, nullptr);
-
-	_createMaterial("material", materialPipeline, materialPipelineLayout);
-
-	// Tonemapping
-
-	TonemappingShaderRD tonemappingShader;
-
-	spirv = tonemappingShader.getVertexCode();
-
-	// create shader module
-	createInfo = {};
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = spirv.size() * sizeof(uint32_t);
-	createInfo.pCode = spirv.data();
-
-	if (vkCreateShaderModule(_context->getDevice(), &createInfo, nullptr, &materialVertexModule) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create vertex module!");
-	}
-
-	spirv = tonemappingShader.getFragmentCode();
-
-	// create shader module
-	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
-	createInfo.codeSize = spirv.size() * sizeof(uint32_t);
-	createInfo.pCode = spirv.data();
-
-	if (vkCreateShaderModule(_context->getDevice(), &createInfo, nullptr, &materialFragmentModule) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create fragment module!");
-	}
-
-	VkPipelineLayout tonemappingPipelineLayout = _createPipelineLayout(&_subpassSetLayout, 1, nullptr, 0);
-	VkPipeline tonemappingPipeline = _createPipeline(tonemappingPipelineLayout, materialVertexModule, materialFragmentModule, 1);
-
-	vkDestroyShaderModule(_context->getDevice(), materialFragmentModule, nullptr);
-	vkDestroyShaderModule(_context->getDevice(), materialVertexModule, nullptr);
-
-	_tonemapping = {};
-
-	_tonemapping.pipelineLayout = tonemappingPipelineLayout;
-	_tonemapping.pipeline = tonemappingPipeline;
 }
 
 void Renderer::_initScene() {
@@ -337,9 +289,7 @@ void Renderer::_initScene() {
 	allocInfo.descriptorSetCount = 1;
 	allocInfo.pSetLayouts = &_textureSetLayout;
 
-	if (vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, &material->textureSet) != VK_SUCCESS) {
-		throw std::runtime_error("failed to allocate image set!");
-	}
+	VK_CHECK(vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, &material->textureSet), "Failed to allocate image set!");
 
 	VkDescriptorImageInfo imageInfo{};
 	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
@@ -376,55 +326,55 @@ void Renderer::_loadTextures() {
 	_textures["texture"] = texture;
 }
 
-void Renderer::_uploadMesh(Mesh &p_mesh) {
+void Renderer::_uploadMesh(Mesh &mesh) {
 	// vertex
-	VkDeviceSize vertexBufferSize = sizeof(p_mesh.vertices[0]) * p_mesh.vertices.size();
+	VkDeviceSize vertexBufferSize = sizeof(mesh.vertices[0]) * mesh.vertices.size();
 
 	// allocate buffer
 	VmaAllocationInfo vertexAllocInfo;
-	p_mesh.vertexBuffer = _createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertexAllocInfo);
+	mesh.vertexBuffer = _createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertexAllocInfo);
 
 	// transfer data
 	VmaAllocationInfo stagingAllocInfo;
 	AllocatedBuffer stagingBuffer = _createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingAllocInfo);
 
-	memcpy(stagingAllocInfo.pMappedData, p_mesh.vertices.data(), (size_t)vertexBufferSize);
+	memcpy(stagingAllocInfo.pMappedData, mesh.vertices.data(), (size_t)vertexBufferSize);
 	vmaFlushAllocation(_allocator, stagingBuffer.allocation, 0, VK_WHOLE_SIZE);
-	_copyBuffer(stagingBuffer.buffer, p_mesh.vertexBuffer.buffer, vertexBufferSize);
+	_copyBuffer(stagingBuffer.buffer, mesh.vertexBuffer.buffer, vertexBufferSize);
 
 	vmaDestroyBuffer(_allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 
 	// index
-	VkDeviceSize indexBufferSize = sizeof(p_mesh.indices[0]) * p_mesh.indices.size();
+	VkDeviceSize indexBufferSize = sizeof(mesh.indices[0]) * mesh.indices.size();
 
 	// allocate buffer
 	VmaAllocationInfo indexAllocInfo;
-	p_mesh.indexBuffer = _createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indexAllocInfo);
+	mesh.indexBuffer = _createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indexAllocInfo);
 
 	// transfer data
 	stagingAllocInfo = {};
 	stagingBuffer = _createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingAllocInfo);
 
-	memcpy(stagingAllocInfo.pMappedData, p_mesh.indices.data(), (size_t)indexBufferSize);
+	memcpy(stagingAllocInfo.pMappedData, mesh.indices.data(), (size_t)indexBufferSize);
 	vmaFlushAllocation(_allocator, stagingBuffer.allocation, 0, VK_WHOLE_SIZE);
-	_copyBuffer(stagingBuffer.buffer, p_mesh.indexBuffer.buffer, indexBufferSize);
+	_copyBuffer(stagingBuffer.buffer, mesh.indexBuffer.buffer, indexBufferSize);
 
 	vmaDestroyBuffer(_allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 }
 
-Material *Renderer::_createMaterial(const std::string &p_name, VkPipeline p_pipeline, VkPipelineLayout p_pipelineLayout) {
+Material *Renderer::_createMaterial(const std::string &name, VkPipeline pipeline, VkPipelineLayout pipelineLayout) {
 	Material mat;
 
-	mat.pipeline = p_pipeline;
-	mat.pipelineLayout = p_pipelineLayout;
+	mat.pipeline = pipeline;
+	mat.pipelineLayout = pipelineLayout;
 
-	_materials[p_name] = mat;
-	return &_materials[p_name];
+	_materials[name] = mat;
+	return &_materials[name];
 }
 
-Mesh *Renderer::_getMesh(const std::string &p_name) {
+Mesh *Renderer::_getMesh(const std::string &name) {
 	// search for the object, and return nullptr if not found
-	auto it = _meshes.find(p_name);
+	auto it = _meshes.find(name);
 	if (it == _meshes.end()) {
 		return nullptr;
 	} else {
@@ -432,9 +382,9 @@ Mesh *Renderer::_getMesh(const std::string &p_name) {
 	}
 }
 
-Material *Renderer::_getMaterial(const std::string &p_name) {
+Material *Renderer::_getMaterial(const std::string &name) {
 	// search for the object, and return nullptr if not found
-	auto it = _materials.find(p_name);
+	auto it = _materials.find(name);
 	if (it == _materials.end()) {
 		return nullptr;
 	} else {
@@ -442,9 +392,9 @@ Material *Renderer::_getMaterial(const std::string &p_name) {
 	}
 }
 
-Texture *Renderer::_getTexture(const std::string &p_name) {
+Texture *Renderer::_getTexture(const std::string &name) {
 	// search for the object, and return nullptr if not found
-	auto it = _textures.find(p_name);
+	auto it = _textures.find(name);
 	if (it == _textures.end()) {
 		return nullptr;
 	} else {
@@ -452,15 +402,15 @@ Texture *Renderer::_getTexture(const std::string &p_name) {
 	}
 }
 
-void Renderer::_drawObjects(VkCommandBuffer p_commandBuffer, RenderObject *p_renderObjects, uint32_t p_count) {
+void Renderer::_drawObjects(VkCommandBuffer commandBuffer, RenderObject *pRenderObjects, uint32_t count) {
 	Mesh *lastMesh = nullptr;
 	Material *lastMaterial = nullptr;
 
-	for (int i = 0; i < p_count; i++) {
-		RenderObject object = p_renderObjects[i];
+	for (int i = 0; i < count; i++) {
+		RenderObject object = pRenderObjects[i];
 
 		if (object.material != lastMaterial) {
-			vkCmdBindPipeline(p_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
+			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
 
 			VkExtent2D extent = _context->getSwapchainExtent();
 
@@ -471,12 +421,12 @@ void Renderer::_drawObjects(VkCommandBuffer p_commandBuffer, RenderObject *p_ren
 			viewport.height = (float)extent.height;
 			viewport.minDepth = 0.0f;
 			viewport.maxDepth = 1.0f;
-			vkCmdSetViewport(p_commandBuffer, 0, 1, &viewport);
+			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
 			VkRect2D scissor{};
 			scissor.offset = { 0, 0 };
 			scissor.extent = extent;
-			vkCmdSetScissor(p_commandBuffer, 0, 1, &scissor);
+			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 			lastMaterial = object.material;
 		}
@@ -485,25 +435,25 @@ void Renderer::_drawObjects(VkCommandBuffer p_commandBuffer, RenderObject *p_ren
 		constants.model = object.transformMatrix;
 
 		// upload the mesh to the gpu via pushconstants
-		vkCmdPushConstants(p_commandBuffer, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
+		vkCmdPushConstants(commandBuffer, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
 
 		// only bind the mesh if its a different one from last bind
 		if (object.mesh != lastMesh) {
 			// bind the mesh vertex buffer with offset 0
 			VkDeviceSize offset = 0;
-			vkCmdBindVertexBuffers(p_commandBuffer, 0, 1, &object.mesh->vertexBuffer.buffer, &offset);
+			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &object.mesh->vertexBuffer.buffer, &offset);
 
 			// bind descriptors
-			vkCmdBindDescriptorSets(p_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &_uniformSets[i], 0, nullptr);
-			vkCmdBindDescriptorSets(p_commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 1, 1, &object.material->textureSet, 0, nullptr);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &_uniformSets[i], 0, nullptr);
+			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 1, 1, &object.material->textureSet, 0, nullptr);
 
 			// bind index buffer
-			vkCmdBindIndexBuffer(p_commandBuffer, object.mesh->indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+			vkCmdBindIndexBuffer(commandBuffer, object.mesh->indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
 
 			lastMesh = object.mesh;
 		}
 
-		vkCmdDrawIndexed(p_commandBuffer, static_cast<uint32_t>(object.mesh->indices.size()), 1, 0, 0, 0);
+		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(object.mesh->indices.size()), 1, 0, 0, 0);
 	}
 }
 
@@ -535,48 +485,46 @@ void Renderer::_updateSubpassSet() {
 	vkUpdateDescriptorSets(_context->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
 }
 
-AllocatedBuffer Renderer::_createBuffer(VkDeviceSize p_size, VkBufferUsageFlags p_usage, VmaAllocationInfo &p_allocInfo) {
+AllocatedBuffer Renderer::_createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationInfo &allocInfo) {
 	VkBufferCreateInfo bufCreateInfo{};
 	bufCreateInfo.sType = VK_STRUCTURE_TYPE_BUFFER_CREATE_INFO;
-	bufCreateInfo.size = p_size;
-	bufCreateInfo.usage = p_usage;
+	bufCreateInfo.size = size;
+	bufCreateInfo.usage = usage;
 
 	VmaAllocationCreateInfo allocCreateInfo{};
 	allocCreateInfo.usage = VMA_MEMORY_USAGE_AUTO;
 	allocCreateInfo.flags = VMA_ALLOCATION_CREATE_HOST_ACCESS_SEQUENTIAL_WRITE_BIT | VMA_ALLOCATION_CREATE_MAPPED_BIT;
 
 	AllocatedBuffer buffer;
-	if (vmaCreateBuffer(_allocator, &bufCreateInfo, &allocCreateInfo, &buffer.buffer, &buffer.allocation, &p_allocInfo) != VK_SUCCESS) {
-		throw std::runtime_error("failed to allocate buffer!");
-	}
+	VK_CHECK(vmaCreateBuffer(_allocator, &bufCreateInfo, &allocCreateInfo, &buffer.buffer, &buffer.allocation, &allocInfo), "Failed to allocate buffer!");
 
 	return buffer;
 }
 
-void Renderer::_copyBuffer(VkBuffer &p_srcBuffer, VkBuffer &p_dstBuffer, VkDeviceSize p_size) {
+void Renderer::_copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size) {
 	VkCommandBuffer commandBuffer = _beginSingleTimeCommands();
 
 	VkBufferCopy bufCopy{};
 	bufCopy.srcOffset = 0;
 	bufCopy.dstOffset = 0;
-	bufCopy.size = p_size;
+	bufCopy.size = size;
 
-	vkCmdCopyBuffer(commandBuffer, p_srcBuffer, p_dstBuffer, 1, &bufCopy);
+	vkCmdCopyBuffer(commandBuffer, srcBuffer, dstBuffer, 1, &bufCopy);
 
 	_endSingleTimeCommands(commandBuffer);
 }
 
-Texture Renderer::_createTexture(uint32_t p_width, uint32_t p_height, VkFormat p_format, const std::vector<uint8_t> &p_data) {
-	uint8_t mipmaps = static_cast<uint32_t>(std::floor(std::log2(std::max(p_width, p_height)))) + 1;
+Texture Renderer::_createTexture(uint32_t width, uint32_t height, VkFormat format, const std::vector<uint8_t> &data) {
+	uint8_t mipmaps = static_cast<uint32_t>(std::floor(std::log2(std::max(width, height)))) + 1;
 
-	AllocatedImage textureImage = _createImage(p_width, p_height, mipmaps, VK_SAMPLE_COUNT_1_BIT, p_format, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
+	AllocatedImage textureImage = _createImage(width, height, format, mipmaps, VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT | VK_IMAGE_USAGE_SAMPLED_BIT);
 
 	// create staging buffer
-	VkDeviceSize size = p_width * p_height * 4;
+	VkDeviceSize size = width * height * 4;
 
 	VmaAllocationInfo stagingAllocInfo;
 	AllocatedBuffer stagingBuffer = _createBuffer(size, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingAllocInfo);
-	memcpy(stagingAllocInfo.pMappedData, p_data.data(), (size_t)size);
+	memcpy(stagingAllocInfo.pMappedData, data.data(), (size_t)size);
 	vmaFlushAllocation(_allocator, stagingBuffer.allocation, 0, VK_WHOLE_SIZE);
 
 	// transition image layout
@@ -621,8 +569,8 @@ Texture Renderer::_createTexture(uint32_t p_width, uint32_t p_height, VkFormat p
 	region.imageSubresource.layerCount = 1;
 	region.imageOffset = { 0, 0, 0 };
 	region.imageExtent = {
-		p_width,
-		p_height,
+		width,
+		height,
 		1
 	};
 
@@ -631,13 +579,17 @@ Texture Renderer::_createTexture(uint32_t p_width, uint32_t p_height, VkFormat p
 	_endSingleTimeCommands(commandBuffer);
 
 	// generate mipmaps
-	_generateMipmaps(textureImage.image, p_format, p_width, p_height, mipmaps);
+	bool isMipmapValid = _generateMipmaps(width, height, format, mipmaps, textureImage.image);
+
+	if (!isMipmapValid) {
+		mipmaps = 1;
+	}
 
 	// destroy staging buffer
 	vmaDestroyBuffer(_allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 
 	// image view
-	VkImageView textureImageView = _createImageView(textureImage.image, p_format, VK_IMAGE_ASPECT_COLOR_BIT, mipmaps);
+	VkImageView textureImageView = _createImageView(textureImage.image, format, mipmaps, VK_IMAGE_ASPECT_COLOR_BIT);
 
 	// sampler
 	VkPhysicalDeviceProperties properties{};
@@ -662,27 +614,27 @@ Texture Renderer::_createTexture(uint32_t p_width, uint32_t p_height, VkFormat p
 	samplerInfo.mipLodBias = 0.0f; // optional
 
 	VkSampler textureSampler;
-	if (vkCreateSampler(_context->getDevice(), &samplerInfo, nullptr, &textureSampler) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create texture sampler!");
-	}
+	VK_CHECK(vkCreateSampler(_context->getDevice(), &samplerInfo, nullptr, &textureSampler), "Failed to create texture sampler!");
 
 	return Texture{ textureImage, textureImageView, textureSampler };
 }
 
-void Renderer::_generateMipmaps(VkImage p_image, VkFormat p_imageFormat, int32_t p_texWidth, int32_t p_texHeight, uint32_t p_mipLevels) {
+bool Renderer::_generateMipmaps(int32_t width, int32_t height, VkFormat format, uint32_t mipmaps, VkImage image) {
 	// check if image format supports linear blitting
 	VkFormatProperties formatProperties;
-	vkGetPhysicalDeviceFormatProperties(_context->getPhysicalDevice(), p_imageFormat, &formatProperties);
+	vkGetPhysicalDeviceFormatProperties(_context->getPhysicalDevice(), format, &formatProperties);
 
 	if (!(formatProperties.optimalTilingFeatures & VK_FORMAT_FEATURE_SAMPLED_IMAGE_FILTER_LINEAR_BIT)) {
-		throw std::runtime_error("texture image format does not support linear blitting!");
+		printf("Texture image format does not support linear blitting!");
+
+		return false;
 	}
 
 	VkCommandBuffer commandBuffer = _beginSingleTimeCommands();
 
 	VkImageMemoryBarrier barrier{};
 	barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
-	barrier.image = p_image;
+	barrier.image = image;
 	barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
 	barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
@@ -690,10 +642,10 @@ void Renderer::_generateMipmaps(VkImage p_image, VkFormat p_imageFormat, int32_t
 	barrier.subresourceRange.layerCount = 1;
 	barrier.subresourceRange.levelCount = 1;
 
-	int32_t mipWidth = p_texWidth;
-	int32_t mipHeight = p_texHeight;
+	int32_t mipWidth = width;
+	int32_t mipHeight = height;
 
-	for (uint32_t i = 1; i < p_mipLevels; i++) {
+	for (uint32_t i = 1; i < mipmaps; i++) {
 		barrier.subresourceRange.baseMipLevel = i - 1;
 		barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 		barrier.newLayout = VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
@@ -721,8 +673,8 @@ void Renderer::_generateMipmaps(VkImage p_image, VkFormat p_imageFormat, int32_t
 		blit.dstSubresource.layerCount = 1;
 
 		vkCmdBlitImage(commandBuffer,
-				p_image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
-				p_image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
+				image, VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL,
+				image, VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL,
 				1, &blit,
 				VK_FILTER_LINEAR);
 
@@ -743,7 +695,7 @@ void Renderer::_generateMipmaps(VkImage p_image, VkFormat p_imageFormat, int32_t
 			mipHeight /= 2;
 	}
 
-	barrier.subresourceRange.baseMipLevel = p_mipLevels - 1;
+	barrier.subresourceRange.baseMipLevel = mipmaps - 1;
 	barrier.oldLayout = VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
 	barrier.newLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 	barrier.srcAccessMask = VK_ACCESS_TRANSFER_WRITE_BIT;
@@ -756,22 +708,24 @@ void Renderer::_generateMipmaps(VkImage p_image, VkFormat p_imageFormat, int32_t
 			1, &barrier);
 
 	_endSingleTimeCommands(commandBuffer);
+
+	return true;
 }
 
-AllocatedImage Renderer::_createImage(uint32_t p_width, uint32_t p_height, uint32_t p_mipmaps, VkSampleCountFlagBits p_numSamples, VkFormat p_format, VkImageUsageFlags p_usage) {
+AllocatedImage Renderer::_createImage(uint32_t width, uint32_t height, VkFormat format, uint32_t mipmaps, VkImageUsageFlags usage) {
 	VkImageCreateInfo imageInfo{};
 	imageInfo.sType = VK_STRUCTURE_TYPE_IMAGE_CREATE_INFO;
 	imageInfo.imageType = VK_IMAGE_TYPE_2D;
-	imageInfo.extent.width = p_width;
-	imageInfo.extent.height = p_height;
+	imageInfo.extent.width = width;
+	imageInfo.extent.height = height;
 	imageInfo.extent.depth = 1;
-	imageInfo.mipLevels = p_mipmaps;
+	imageInfo.mipLevels = mipmaps;
 	imageInfo.arrayLayers = 1;
-	imageInfo.format = p_format;
+	imageInfo.format = format;
 	imageInfo.tiling = VK_IMAGE_TILING_OPTIMAL;
 	imageInfo.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	imageInfo.usage = p_usage;
-	imageInfo.samples = p_numSamples;
+	imageInfo.usage = usage;
+	imageInfo.samples = VK_SAMPLE_COUNT_1_BIT;
 	imageInfo.sharingMode = VK_SHARING_MODE_EXCLUSIVE;
 
 	VmaAllocationCreateInfo allocCreateInfo = {};
@@ -780,60 +734,54 @@ AllocatedImage Renderer::_createImage(uint32_t p_width, uint32_t p_height, uint3
 	allocCreateInfo.priority = 1.0f;
 
 	AllocatedImage allocatedImage;
-	if (vmaCreateImage(_allocator, &imageInfo, &allocCreateInfo, &allocatedImage.image, &allocatedImage.allocation, nullptr) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create image!");
-	}
+	VK_CHECK(vmaCreateImage(_allocator, &imageInfo, &allocCreateInfo, &allocatedImage.image, &allocatedImage.allocation, nullptr), "Failed to create image!");
 
 	return allocatedImage;
 }
 
-VkImageView Renderer::_createImageView(VkImage p_image, VkFormat p_format, VkImageAspectFlags p_aspectFlags, uint32_t p_mipmaps) {
+VkImageView Renderer::_createImageView(VkImage image, VkFormat format, uint32_t mipmaps, VkImageAspectFlags aspectFlags) {
 	VkImageViewCreateInfo viewInfo{};
 	viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
-	viewInfo.image = p_image;
+	viewInfo.image = image;
 	viewInfo.viewType = VK_IMAGE_VIEW_TYPE_2D;
-	viewInfo.format = p_format;
-	viewInfo.subresourceRange.aspectMask = p_aspectFlags;
+	viewInfo.format = format;
+	viewInfo.subresourceRange.aspectMask = aspectFlags;
 	viewInfo.subresourceRange.baseMipLevel = 0;
-	viewInfo.subresourceRange.levelCount = p_mipmaps;
+	viewInfo.subresourceRange.levelCount = mipmaps;
 	viewInfo.subresourceRange.baseArrayLayer = 0;
 	viewInfo.subresourceRange.layerCount = 1;
 
 	VkImageView imageView;
-	if (vkCreateImageView(_context->getDevice(), &viewInfo, nullptr, &imageView) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create texture image view!");
-	}
+	VK_CHECK(vkCreateImageView(_context->getDevice(), &viewInfo, nullptr, &imageView), "Failed to create image view!");
 
 	return imageView;
 }
 
-VkPipelineLayout Renderer::_createPipelineLayout(VkDescriptorSetLayout *p_setLayouts, uint32_t p_layoutCount, VkPushConstantRange *p_pushConstants, uint32_t p_constantCount) {
+VkPipelineLayout Renderer::_createPipelineLayout(VkDescriptorSetLayout *pSetLayouts, uint32_t layoutCount, VkPushConstantRange *pPushConstants, uint32_t constantCount) {
 	VkPipelineLayoutCreateInfo pipelineLayoutInfo{};
 	pipelineLayoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
-	pipelineLayoutInfo.setLayoutCount = p_layoutCount;
-	pipelineLayoutInfo.pSetLayouts = p_setLayouts;
-	pipelineLayoutInfo.pushConstantRangeCount = p_constantCount;
-	pipelineLayoutInfo.pPushConstantRanges = p_pushConstants;
+	pipelineLayoutInfo.setLayoutCount = layoutCount;
+	pipelineLayoutInfo.pSetLayouts = pSetLayouts;
+	pipelineLayoutInfo.pushConstantRangeCount = constantCount;
+	pipelineLayoutInfo.pPushConstantRanges = pPushConstants;
 
 	VkPipelineLayout pipelineLayout;
-	if (vkCreatePipelineLayout(_context->getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create pipeline layout!");
-	}
+	VK_CHECK(vkCreatePipelineLayout(_context->getDevice(), &pipelineLayoutInfo, nullptr, &pipelineLayout), "Failed to create pipeline layout!");
 
 	return pipelineLayout;
 }
 
-VkPipeline Renderer::_createPipeline(VkPipelineLayout p_layout, VkShaderModule p_vertex, VkShaderModule p_fragment, uint32_t p_subpass) {
+VkPipeline Renderer::_createPipeline(VkPipelineLayout layout, VkShaderModule vertex, VkShaderModule fragment, uint32_t subpass) {
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
 	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
-	vertShaderStageInfo.module = p_vertex;
+	vertShaderStageInfo.module = vertex;
 	vertShaderStageInfo.pName = "main";
 
 	VkPipelineShaderStageCreateInfo fragShaderStageInfo{};
 	fragShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	fragShaderStageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
-	fragShaderStageInfo.module = p_fragment;
+	fragShaderStageInfo.module = fragment;
 	fragShaderStageInfo.pName = "main";
 
 	VkPipelineShaderStageCreateInfo shaderStages[] = { vertShaderStageInfo, fragShaderStageInfo };
@@ -917,15 +865,13 @@ VkPipeline Renderer::_createPipeline(VkPipelineLayout p_layout, VkShaderModule p
 	pipelineInfo.pDepthStencilState = &depthStencil;
 	pipelineInfo.pColorBlendState = &colorBlending;
 	pipelineInfo.pDynamicState = &dynamicState;
-	pipelineInfo.layout = p_layout;
+	pipelineInfo.layout = layout;
 	pipelineInfo.renderPass = _context->getRenderPass();
-	pipelineInfo.subpass = p_subpass;
+	pipelineInfo.subpass = subpass;
 	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
 	VkPipeline pipeline;
-	if (vkCreateGraphicsPipelines(_context->getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline) != VK_SUCCESS) {
-		throw std::runtime_error("failed to create graphics pipeline!");
-	}
+	VK_CHECK(vkCreateGraphicsPipelines(_context->getDevice(), VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline), "Failed to create graphics pipeline!");
 
 	return pipeline;
 }
@@ -949,51 +895,38 @@ VkCommandBuffer Renderer::_beginSingleTimeCommands() {
 	return commandBuffer;
 }
 
-void Renderer::_endSingleTimeCommands(VkCommandBuffer p_commandBuffer) {
-	vkEndCommandBuffer(p_commandBuffer);
+void Renderer::_endSingleTimeCommands(VkCommandBuffer commandBuffer) {
+	vkEndCommandBuffer(commandBuffer);
 
 	VkSubmitInfo submitInfo{};
 	submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
 	submitInfo.commandBufferCount = 1;
-	submitInfo.pCommandBuffers = &p_commandBuffer;
+	submitInfo.pCommandBuffers = &commandBuffer;
 
 	vkQueueSubmit(_context->getGraphicsQueue(), 1, &submitInfo, VK_NULL_HANDLE);
 	vkQueueWaitIdle(_context->getGraphicsQueue());
 
-	vkFreeCommandBuffers(_context->getDevice(), _context->getCommandPool(), 1, &p_commandBuffer);
+	vkFreeCommandBuffers(_context->getDevice(), _context->getCommandPool(), 1, &commandBuffer);
 }
 
-void Renderer::setCamera(Camera *p_camera) {
-	_camera = p_camera;
+void Renderer::setCamera(Camera *pCamera) {
+	_camera = pCamera;
 }
 
-void Renderer::windowCreate(GLFWwindow *p_window, uint32_t p_width, uint32_t p_height) {
-	_context->windowCreate(p_window, p_width, p_height);
+void Renderer::windowCreate(GLFWwindow *pWindow, uint32_t width, uint32_t height) {
+	_context->windowCreate(pWindow, width, height);
 
 	_initAllocator();
-	std::cout << "Allocator initialized!\n";
-
 	_initCommands();
-	std::cout << "Commands initialized!\n";
-
 	_initDescriptors();
-	std::cout << "Descriptors initialized!\n";
-
 	_initPipelines();
-	std::cout << "Pipelines initialized!\n";
-
 	_loadMeshes();
-	std::cout << "Meshes loaded!\n";
-
 	_loadTextures();
-	std::cout << "Textures loaded!\n";
-
 	_initScene();
-	std::cout << "Scene initialized!\n";
 }
 
-void Renderer::windowResize(uint32_t p_width, uint32_t p_height) {
-	_context->windowResize(p_width, p_height);
+void Renderer::windowResize(uint32_t width, uint32_t height) {
+	_context->windowResize(width, height);
 }
 
 void Renderer::draw() {
@@ -1008,7 +941,7 @@ void Renderer::draw() {
 	if (result == VK_ERROR_OUT_OF_DATE_KHR) {
 		_context->recreateSwapchain();
 	} else if (result != VK_SUCCESS && result != VK_SUBOPTIMAL_KHR) {
-		throw std::runtime_error("failed to acquire swap chain image!");
+		printf("Failed to acquire swapchain image!");
 	}
 
 	vkDeviceWaitIdle(_context->getDevice());
@@ -1023,9 +956,7 @@ void Renderer::draw() {
 	VkCommandBufferBeginInfo beginInfo{};
 	beginInfo.sType = VK_STRUCTURE_TYPE_COMMAND_BUFFER_BEGIN_INFO;
 
-	if (vkBeginCommandBuffer(commandBuffer, &beginInfo) != VK_SUCCESS) {
-		throw std::runtime_error("failed to begin recording command buffer!");
-	}
+	VK_CHECK(vkBeginCommandBuffer(commandBuffer, &beginInfo), "Failed to begin recording command buffer!");
 
 	VkRenderPassBeginInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_BEGIN_INFO;
@@ -1085,8 +1016,8 @@ void Renderer::waitIdle() {
 	vkDeviceWaitIdle(_context->getDevice());
 }
 
-Renderer::Renderer(bool p_validationLayers) {
-	_context = new VulkanContext(p_validationLayers);
+Renderer::Renderer(bool useValidation) {
+	_context = new VulkanContext(useValidation);
 }
 
 Renderer::~Renderer() {

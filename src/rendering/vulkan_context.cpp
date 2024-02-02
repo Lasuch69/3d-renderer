@@ -6,14 +6,6 @@
 
 #include "vulkan_context.h"
 
-#define VK_CHECK(x, msg)                         \
-	{                                            \
-		VkResult err = x;                        \
-		if (err) {                               \
-			printf("ERROR: %d, %s\n", err, msg); \
-		}                                        \
-	}
-
 VkResult CreateDebugUtilsMessengerEXT(VkInstance instance, const VkDebugUtilsMessengerCreateInfoEXT *pCreateInfo, const VkAllocationCallbacks *pAllocator, VkDebugUtilsMessengerEXT *pDebugMessenger) {
 	PFN_vkCreateDebugUtilsMessengerEXT func = (PFN_vkCreateDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
 	if (func != nullptr) {

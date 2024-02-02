@@ -9,6 +9,14 @@
 
 #include <GLFW/glfw3.h>
 
+#define VK_CHECK(x, msg)                         \
+	{                                            \
+		VkResult err = x;                        \
+		if (err) {                               \
+			printf("ERROR: %d, %s\n", err, msg); \
+		}                                        \
+	}
+
 const int MAX_FRAMES_IN_FLIGHT = 2;
 
 const std::vector<const char *> validationLayers = {
