@@ -52,12 +52,17 @@ class Renderer {
 	VkCommandBuffer _commandBuffers[MAX_FRAMES_IN_FLIGHT];
 
 	VkDescriptorPool _descriptorPool;
+
 	VkDescriptorSetLayout _uniformSetLayout;
+	VkDescriptorSetLayout _subpassSetLayout;
 	VkDescriptorSetLayout _textureSetLayout;
 
 	AllocatedBuffer _uniformBuffers[MAX_FRAMES_IN_FLIGHT];
 	VmaAllocationInfo _uniformAllocInfos[MAX_FRAMES_IN_FLIGHT];
 	VkDescriptorSet _uniformSets[MAX_FRAMES_IN_FLIGHT];
+
+	VkDescriptorSet _subpassSet;
+	Material _tonemapping;
 
 	// Objects
 	std::vector<RenderObject> _renderObjects;
@@ -85,6 +90,7 @@ class Renderer {
 	void _drawObjects(VkCommandBuffer p_commandBuffer, RenderObject *p_renderObjects, uint32_t p_count);
 
 	void _updateUniformBuffer(uint32_t p_currentFrame);
+	void _updateSubpassSet();
 
 	AllocatedBuffer _createBuffer(VkDeviceSize p_size, VkBufferUsageFlags p_usage, VmaAllocationInfo &p_allocInfo);
 	void _copyBuffer(VkBuffer &p_srcBuffer, VkBuffer &p_dstBuffer, VkDeviceSize p_size);
@@ -96,7 +102,7 @@ class Renderer {
 	VkImageView _createImageView(VkImage p_image, VkFormat p_format, VkImageAspectFlags p_aspectFlags, uint32_t p_mipmaps);
 
 	VkPipelineLayout _createPipelineLayout(VkDescriptorSetLayout *p_setLayouts, uint32_t p_layoutCount, VkPushConstantRange *p_pushConstants, uint32_t p_constantCount);
-	VkPipeline _createPipeline(VkPipelineLayout p_layout, VkShaderModule p_vertex, VkShaderModule p_fragment);
+	VkPipeline _createPipeline(VkPipelineLayout p_layout, VkShaderModule p_vertex, VkShaderModule p_fragment, uint32_t p_subpass);
 
 	VkCommandBuffer _beginSingleTimeCommands();
 	void _endSingleTimeCommands(VkCommandBuffer p_commandBuffer);

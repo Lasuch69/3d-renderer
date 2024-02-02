@@ -383,21 +383,35 @@ void VulkanContext::_createSwapChain(Window *pWindow) {
 
 	// Resources
 
+	VkFormat colorFormat = VK_FORMAT_R16G16B16A16_SFLOAT;
+	_colorImage = _createImage(extent.width, extent.height, colorFormat, VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT | VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT, &_colorImageMemory);
+	_colorImageView = _createImageView(_colorImage, colorFormat, VK_IMAGE_ASPECT_COLOR_BIT);
+
 	VkFormat depthFormat = _findDepthFormat();
 	_depthImage = _createImage(extent.width, extent.height, depthFormat, VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT, &_depthImageMemory);
 	_depthImageView = _createImageView(_depthImage, depthFormat, VK_IMAGE_ASPECT_DEPTH_BIT);
 
 	// Framebuffers
 
+	VkAttachmentDescription finalColorAttachment{};
+	finalColorAttachment.format = surfaceFormat.format;
+	finalColorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
+	finalColorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	finalColorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
+	finalColorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
+	finalColorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
+	finalColorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
+	finalColorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+
 	VkAttachmentDescription colorAttachment{};
-	colorAttachment.format = surfaceFormat.format;
+	colorAttachment.format = colorFormat;
 	colorAttachment.samples = VK_SAMPLE_COUNT_1_BIT;
 	colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
 	colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
 	colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
 	colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
 	colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
+	colorAttachment.finalLayout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 	VkAttachmentDescription depthAttachment{};
 	depthAttachment.format = depthFormat;
@@ -409,54 +423,83 @@ void VulkanContext::_createSwapChain(Window *pWindow) {
 	depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
 	depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
+	VkAttachmentReference finalColorAttachmentRef{};
+	finalColorAttachmentRef.attachment = 0;
+	finalColorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
+
 	VkAttachmentReference colorAttachmentRef{};
-	colorAttachmentRef.attachment = 0;
+	colorAttachmentRef.attachment = 1;
 	colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
 
 	VkAttachmentReference depthAttachmentRef{};
-	depthAttachmentRef.attachment = 1;
+	depthAttachmentRef.attachment = 2;
 	depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
 
-	VkSubpassDescription subpass{};
-	subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-	subpass.colorAttachmentCount = 1;
-	subpass.pColorAttachments = &colorAttachmentRef;
-	subpass.pDepthStencilAttachment = &depthAttachmentRef;
+	VkAttachmentReference inputAttachmentRef{};
+	inputAttachmentRef.attachment = 1;
+	inputAttachmentRef.layout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
 
-	VkSubpassDependency dependency{};
-	dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-	dependency.dstSubpass = 0;
-	dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-	dependency.srcAccessMask = 0;
-	dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT | VK_PIPELINE_STAGE_EARLY_FRAGMENT_TESTS_BIT;
-	dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT | VK_ACCESS_DEPTH_STENCIL_ATTACHMENT_WRITE_BIT;
+	VkSubpassDescription tonemapSubpass{};
+	tonemapSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	tonemapSubpass.colorAttachmentCount = 1;
+	tonemapSubpass.pColorAttachments = &finalColorAttachmentRef;
+	tonemapSubpass.inputAttachmentCount = 1;
+	tonemapSubpass.pInputAttachments = &inputAttachmentRef;
+
+	VkSubpassDescription drawSubpass{};
+	drawSubpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
+	drawSubpass.colorAttachmentCount = 1;
+	drawSubpass.pColorAttachments = &colorAttachmentRef;
+	drawSubpass.pDepthStencilAttachment = &depthAttachmentRef;
+
+	VkSubpassDependency dependencies[2] = {};
+
+	dependencies[0].srcSubpass = VK_SUBPASS_EXTERNAL;
+	dependencies[0].dstSubpass = 0;
+	dependencies[0].srcStageMask = VK_PIPELINE_STAGE_BOTTOM_OF_PIPE_BIT;
+	dependencies[0].dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[0].srcAccessMask = 0;
+	dependencies[0].dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	// dependencies[0].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
+
+	dependencies[1].srcSubpass = 0;
+	dependencies[1].dstSubpass = 1;
+	dependencies[1].srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
+	dependencies[1].dstStageMask = VK_PIPELINE_STAGE_FRAGMENT_SHADER_BIT;
+	dependencies[1].srcAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
+	dependencies[1].dstAccessMask = VK_ACCESS_SHADER_READ_BIT;
+	// dependencies[1].dependencyFlags = VK_DEPENDENCY_BY_REGION_BIT;
 
 	VkAttachmentDescription attachments[] = {
+		finalColorAttachment,
 		colorAttachment,
 		depthAttachment,
 	};
 
+	VkSubpassDescription subpasses[] = { drawSubpass, tonemapSubpass };
+
 	VkRenderPassCreateInfo renderPassInfo{};
 	renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-	renderPassInfo.attachmentCount = 2;
+	renderPassInfo.attachmentCount = 3;
 	renderPassInfo.pAttachments = attachments;
-	renderPassInfo.subpassCount = 1;
-	renderPassInfo.pSubpasses = &subpass;
-	renderPassInfo.dependencyCount = 1;
-	renderPassInfo.pDependencies = &dependency;
+	renderPassInfo.subpassCount = 2;
+	renderPassInfo.pSubpasses = subpasses;
+	renderPassInfo.dependencyCount = 2;
+	renderPassInfo.pDependencies = dependencies;
 
 	VK_CHECK(vkCreateRenderPass(_device, &renderPassInfo, nullptr, &pWindow->renderPass), "Failed to create renderpass!");
 
 	for (size_t i = 0; i < imageCount; i++) {
 		VkImageView attachmentViews[] = {
 			pWindow->swapchainImages[i].view,
+			_colorImageView,
 			_depthImageView,
 		};
 
 		VkFramebufferCreateInfo framebufferInfo{};
 		framebufferInfo.sType = VK_STRUCTURE_TYPE_FRAMEBUFFER_CREATE_INFO;
 		framebufferInfo.renderPass = pWindow->renderPass;
-		framebufferInfo.attachmentCount = 2;
+		framebufferInfo.attachmentCount = 3;
 		framebufferInfo.pAttachments = attachmentViews;
 		framebufferInfo.width = extent.width;
 		framebufferInfo.height = extent.height;
@@ -469,6 +512,10 @@ void VulkanContext::_createSwapChain(Window *pWindow) {
 }
 
 void VulkanContext::_cleanupSwapChain(Window *pWindow) {
+	vkDestroyImageView(_device, _colorImageView, nullptr);
+	vkDestroyImage(_device, _colorImage, nullptr);
+	vkFreeMemory(_device, _colorImageMemory, nullptr);
+
 	vkDestroyImageView(_device, _depthImageView, nullptr);
 	vkDestroyImage(_device, _depthImage, nullptr);
 	vkFreeMemory(_device, _depthImageMemory, nullptr);

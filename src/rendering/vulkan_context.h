@@ -80,6 +80,10 @@ private:
 
 	VkCommandPool _commandPool;
 
+	VkImage _colorImage;
+	VkDeviceMemory _colorImageMemory;
+	VkImageView _colorImageView;
+
 	VkImage _depthImage;
 	VkDeviceMemory _depthImageMemory;
 	VkImageView _depthImageView;
@@ -142,6 +146,9 @@ public:
 	VkCommandPool getCommandPool() { return _commandPool; }
 
 	SyncObject getSyncObject(uint32_t index) { return _syncObjects[index]; }
+
+	VkImage getColorImage() { return _colorImage; }
+	VkImageView getColorImageView() { return _colorImageView; }
 
 	VulkanContext(bool useValidation);
 	~VulkanContext();

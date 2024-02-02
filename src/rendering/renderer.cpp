@@ -9,12 +9,14 @@
 #include <imgui.h>
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
+#include <vulkan/vulkan_core.h>
 
 #include "../loader.h"
 #include "renderer.h"
 #include "vulkan_context.h"
 
 #include "shaders/material.glsl.gen.h"
+#include "shaders/tonemapping.glsl.gen.h"
 
 void Renderer::_initAllocator() {
 	VmaAllocatorCreateInfo allocatorCreateInfo = {};
@@ -43,29 +45,33 @@ void Renderer::_initCommands() {
 }
 
 void Renderer::_initDescriptors() {
-	std::array<VkDescriptorPoolSize, 3> poolSizes{};
+	std::array<VkDescriptorPoolSize, 4> poolSizes{};
 	poolSizes[0].type = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
 	poolSizes[0].descriptorCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
 
-	// texture
-	poolSizes[1].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	// subpass
+	poolSizes[1].type = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
 	poolSizes[1].descriptorCount = 1;
 
-	// ImGui
+	// texture
 	poolSizes[2].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
 	poolSizes[2].descriptorCount = 1;
+
+	// ImGui
+	poolSizes[3].type = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	poolSizes[3].descriptorCount = 1;
 
 	VkDescriptorPoolCreateInfo poolInfo{};
 	poolInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
 	poolInfo.poolSizeCount = static_cast<uint32_t>(poolSizes.size());
 	poolInfo.pPoolSizes = poolSizes.data();
-	poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) + 2;
+	poolInfo.maxSets = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT) + 3;
 
 	if (vkCreateDescriptorPool(_context->getDevice(), &poolInfo, nullptr, &_descriptorPool) != VK_SUCCESS) {
 		throw std::runtime_error("failed to create descriptor pool!");
 	}
 
-	// global set layout
+	// uniform set layout
 
 	VkDescriptorSetLayoutBinding uboBinding{};
 	uboBinding.binding = 0;
@@ -83,40 +89,87 @@ void Renderer::_initDescriptors() {
 		throw std::runtime_error("failed to create UBO set layout!");
 	}
 
-	std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _uniformSetLayout);
-	VkDescriptorSetAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	allocInfo.descriptorPool = _descriptorPool;
-	allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
-	allocInfo.pSetLayouts = layouts.data();
+	{
+		std::vector<VkDescriptorSetLayout> layouts(MAX_FRAMES_IN_FLIGHT, _uniformSetLayout);
+		VkDescriptorSetAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = _descriptorPool;
+		allocInfo.descriptorSetCount = static_cast<uint32_t>(MAX_FRAMES_IN_FLIGHT);
+		allocInfo.pSetLayouts = layouts.data();
 
-	std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> uniformSets{};
+		std::array<VkDescriptorSet, MAX_FRAMES_IN_FLIGHT> uniformSets{};
 
-	if (vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, uniformSets.data()) != VK_SUCCESS) {
-		throw std::runtime_error("failed to allocate uniform set!");
+		if (vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, uniformSets.data()) != VK_SUCCESS) {
+			throw std::runtime_error("failed to allocate uniform set!");
+		}
+
+		for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
+			VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+
+			_uniformBuffers[i] = _createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, _uniformAllocInfos[i]);
+			_uniformSets[i] = uniformSets[i];
+
+			VkDescriptorBufferInfo uniformBufferInfo{};
+			uniformBufferInfo.buffer = _uniformBuffers[i].buffer;
+			uniformBufferInfo.offset = 0;
+			uniformBufferInfo.range = sizeof(UniformBufferObject);
+
+			VkWriteDescriptorSet descriptorWrite{};
+			descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+			descriptorWrite.dstSet = _uniformSets[i];
+			descriptorWrite.dstBinding = 0;
+			descriptorWrite.dstArrayElement = 0;
+			descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
+			descriptorWrite.descriptorCount = 1;
+			descriptorWrite.pBufferInfo = &uniformBufferInfo;
+
+			vkUpdateDescriptorSets(_context->getDevice(), 1, &descriptorWrite, 0, nullptr);
+		}
 	}
 
-	for (int i = 0; i < MAX_FRAMES_IN_FLIGHT; i++) {
-		VkDeviceSize bufferSize = sizeof(UniformBufferObject);
+	// subpass input set layout
 
-		_uniformBuffers[i] = _createBuffer(bufferSize, VK_BUFFER_USAGE_UNIFORM_BUFFER_BIT | VK_BUFFER_USAGE_TRANSFER_DST_BIT, _uniformAllocInfos[i]);
-		_uniformSets[i] = uniformSets[i];
+	VkDescriptorSetLayoutBinding subpassBinding{};
+	subpassBinding.binding = 0;
+	subpassBinding.descriptorCount = 1;
+	subpassBinding.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+	subpassBinding.pImmutableSamplers = nullptr;
+	subpassBinding.stageFlags = VK_SHADER_STAGE_FRAGMENT_BIT;
 
-		VkDescriptorBufferInfo uniformBufferInfo{};
-		uniformBufferInfo.buffer = _uniformBuffers[i].buffer;
-		uniformBufferInfo.offset = 0;
-		uniformBufferInfo.range = sizeof(UniformBufferObject);
+	VkDescriptorSetLayoutCreateInfo subpassLayoutInfo{};
+	subpassLayoutInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+	subpassLayoutInfo.bindingCount = 1;
+	subpassLayoutInfo.pBindings = &subpassBinding;
 
-		VkWriteDescriptorSet descriptorWrite{};
-		descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		descriptorWrite.dstSet = _uniformSets[i];
-		descriptorWrite.dstBinding = 0;
-		descriptorWrite.dstArrayElement = 0;
-		descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_UNIFORM_BUFFER;
-		descriptorWrite.descriptorCount = 1;
-		descriptorWrite.pBufferInfo = &uniformBufferInfo;
+	if (vkCreateDescriptorSetLayout(_context->getDevice(), &subpassLayoutInfo, nullptr, &_subpassSetLayout) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create subpass set layout!");
+	}
 
-		vkUpdateDescriptorSets(_context->getDevice(), 1, &descriptorWrite, 0, nullptr);
+	{
+		VkDescriptorSetAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = _descriptorPool;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.pSetLayouts = &_subpassSetLayout;
+
+		if (vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, &_subpassSet) != VK_SUCCESS) {
+			throw std::runtime_error("failed to allocate uniform set!");
+		}
+
+		VkDescriptorImageInfo imageInfo = {};
+		imageInfo.imageView = _context->getColorImageView(); // Replace with the actual image view of the previous subpass attachment
+		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // Adjust based on the layout used in the previous subpass
+
+		VkWriteDescriptorSet writeDescriptorSet = {};
+		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+		writeDescriptorSet.dstSet = _subpassSet;
+		writeDescriptorSet.dstBinding = 0;
+		writeDescriptorSet.dstArrayElement = 0;
+		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+		writeDescriptorSet.descriptorCount = 1;
+		writeDescriptorSet.pImageInfo = &imageInfo;
+
+		vkUpdateDescriptorSets(_context->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
 	}
 
 	// texture set layout
@@ -208,12 +261,50 @@ void Renderer::_initPipelines() {
 	pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
 	VkPipelineLayout materialPipelineLayout = _createPipelineLayout(setLayouts, 2, &pushConstant, 1);
-	VkPipeline materialPipeline = _createPipeline(materialPipelineLayout, materialVertexModule, materialFragmentModule);
+	VkPipeline materialPipeline = _createPipeline(materialPipelineLayout, materialVertexModule, materialFragmentModule, 0);
 
 	vkDestroyShaderModule(_context->getDevice(), materialFragmentModule, nullptr);
 	vkDestroyShaderModule(_context->getDevice(), materialVertexModule, nullptr);
 
 	_createMaterial("material", materialPipeline, materialPipelineLayout);
+
+	// Tonemapping
+
+	TonemappingShaderRD tonemappingShader;
+
+	spirv = tonemappingShader.getVertexCode();
+
+	// create shader module
+	createInfo = {};
+	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	createInfo.codeSize = spirv.size() * sizeof(uint32_t);
+	createInfo.pCode = spirv.data();
+
+	if (vkCreateShaderModule(_context->getDevice(), &createInfo, nullptr, &materialVertexModule) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create vertex module!");
+	}
+
+	spirv = tonemappingShader.getFragmentCode();
+
+	// create shader module
+	createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+	createInfo.codeSize = spirv.size() * sizeof(uint32_t);
+	createInfo.pCode = spirv.data();
+
+	if (vkCreateShaderModule(_context->getDevice(), &createInfo, nullptr, &materialFragmentModule) != VK_SUCCESS) {
+		throw std::runtime_error("failed to create fragment module!");
+	}
+
+	VkPipelineLayout tonemappingPipelineLayout = _createPipelineLayout(&_subpassSetLayout, 1, nullptr, 0);
+	VkPipeline tonemappingPipeline = _createPipeline(tonemappingPipelineLayout, materialVertexModule, materialFragmentModule, 1);
+
+	vkDestroyShaderModule(_context->getDevice(), materialFragmentModule, nullptr);
+	vkDestroyShaderModule(_context->getDevice(), materialVertexModule, nullptr);
+
+	_tonemapping = {};
+
+	_tonemapping.pipelineLayout = tonemappingPipelineLayout;
+	_tonemapping.pipeline = tonemappingPipeline;
 }
 
 void Renderer::_initScene() {
@@ -425,6 +516,23 @@ void Renderer::_updateUniformBuffer(uint32_t p_currentFrame) {
 	ubo.proj = _camera->getProjectionMatrix(aspect);
 
 	memcpy(_uniformAllocInfos[_currentFrame].pMappedData, &ubo, sizeof(ubo));
+}
+
+void Renderer::_updateSubpassSet() {
+	VkDescriptorImageInfo imageInfo = {};
+	imageInfo.imageView = _context->getColorImageView(); // Replace with the actual image view of the previous subpass attachment
+	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // Adjust based on the layout used in the previous subpass
+
+	VkWriteDescriptorSet writeDescriptorSet = {};
+	writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	writeDescriptorSet.dstSet = _subpassSet;
+	writeDescriptorSet.dstBinding = 0;
+	writeDescriptorSet.dstArrayElement = 0;
+	writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+	writeDescriptorSet.descriptorCount = 1;
+	writeDescriptorSet.pImageInfo = &imageInfo;
+
+	vkUpdateDescriptorSets(_context->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
 }
 
 AllocatedBuffer Renderer::_createBuffer(VkDeviceSize p_size, VkBufferUsageFlags p_usage, VmaAllocationInfo &p_allocInfo) {
@@ -715,7 +823,7 @@ VkPipelineLayout Renderer::_createPipelineLayout(VkDescriptorSetLayout *p_setLay
 	return pipelineLayout;
 }
 
-VkPipeline Renderer::_createPipeline(VkPipelineLayout p_layout, VkShaderModule p_vertex, VkShaderModule p_fragment) {
+VkPipeline Renderer::_createPipeline(VkPipelineLayout p_layout, VkShaderModule p_vertex, VkShaderModule p_fragment, uint32_t p_subpass) {
 	VkPipelineShaderStageCreateInfo vertShaderStageInfo{};
 	vertShaderStageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
 	vertShaderStageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
@@ -811,7 +919,7 @@ VkPipeline Renderer::_createPipeline(VkPipelineLayout p_layout, VkShaderModule p
 	pipelineInfo.pDynamicState = &dynamicState;
 	pipelineInfo.layout = p_layout;
 	pipelineInfo.renderPass = _context->getRenderPass();
-	pipelineInfo.subpass = 0;
+	pipelineInfo.subpass = p_subpass;
 	pipelineInfo.basePipelineHandle = VK_NULL_HANDLE;
 
 	VkPipeline pipeline;
@@ -903,6 +1011,9 @@ void Renderer::draw() {
 		throw std::runtime_error("failed to acquire swap chain image!");
 	}
 
+	vkDeviceWaitIdle(_context->getDevice());
+	_updateSubpassSet();
+
 	_updateUniformBuffer(_currentFrame);
 
 	vkResetFences(_context->getDevice(), 1, &sync.renderFence);
@@ -923,9 +1034,9 @@ void Renderer::draw() {
 	renderPassInfo.renderArea.offset = { 0, 0 };
 	renderPassInfo.renderArea.extent = _context->getSwapchainExtent();
 
-	std::array<VkClearValue, 2> clearValues{};
-	clearValues[0].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
-	clearValues[1].depthStencil = { 1.0f, 0 };
+	std::array<VkClearValue, 3> clearValues{};
+	clearValues[1].color = { { 0.0f, 0.0f, 0.0f, 1.0f } };
+	clearValues[2].depthStencil = { 1.0f, 0 };
 
 	renderPassInfo.clearValueCount = static_cast<uint32_t>(clearValues.size());
 	renderPassInfo.pClearValues = clearValues.data();
@@ -935,6 +1046,31 @@ void Renderer::draw() {
 	_drawObjects(commandBuffer, _renderObjects.data(), _renderObjects.size());
 
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
+
+	// Tonemapping
+	vkCmdNextSubpass(commandBuffer, VK_SUBPASS_CONTENTS_INLINE);
+
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _tonemapping.pipeline);
+
+	VkExtent2D extent = _context->getSwapchainExtent();
+
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = (float)extent.width;
+	viewport.height = (float)extent.height;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = extent;
+	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _tonemapping.pipelineLayout, 0, 1, &_subpassSet, 0, nullptr);
+
+	vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
 	vkCmdEndRenderPass(commandBuffer);
 
