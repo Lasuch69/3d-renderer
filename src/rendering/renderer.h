@@ -2,14 +2,14 @@
 #define RENDERER_H
 
 #include <cstdint>
-#include <string>
 #include <unordered_map>
 
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 
 #include "../camera.h"
-#include "mesh.h"
+
+#include "vertex.h"
 #include "vulkan_context.h"
 
 struct UniformBufferObject {
@@ -22,6 +22,16 @@ struct MeshPushConstants {
 	glm::mat4 model;
 };
 
+struct Mesh {
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+
+	AllocatedBuffer vertexBuffer;
+	AllocatedBuffer indexBuffer;
+
+	bool initialized = false;
+};
+
 struct Texture {
 	AllocatedImage image;
 	VkImageView view;
@@ -30,16 +40,19 @@ struct Texture {
 
 struct Material {
 	VkDescriptorSet textureSet;
-	VkPipeline pipeline;
+
 	VkPipelineLayout pipelineLayout;
+	VkPipeline pipeline;
 };
 
-struct RenderObject {
-	Mesh *mesh;
-	Material *material;
+struct Object {
+	Mesh *pMesh;
+	Texture *pTexture;
 
-	glm::mat4 transformMatrix;
+	glm::mat4 transform;
 };
+
+typedef uint64_t RID;
 
 class Renderer {
 	VulkanContext *_context;
@@ -61,33 +74,20 @@ class Renderer {
 	VmaAllocationInfo _uniformAllocInfos[MAX_FRAMES_IN_FLIGHT];
 	VkDescriptorSet _uniformSets[MAX_FRAMES_IN_FLIGHT];
 
+	Material _material;
+
 	VkDescriptorSet _subpassSet;
 	Material _tonemapping;
 
-	// Objects
-	std::vector<RenderObject> _renderObjects;
-
-	std::unordered_map<std::string, Mesh> _meshes;
-	std::unordered_map<std::string, Material> _materials;
-	std::unordered_map<std::string, Texture> _textures;
+	std::unordered_map<RID, Object> _objects;
+	uint64_t _objectIdx = 0;
 
 	void _initAllocator();
 	void _initCommands();
 	void _initDescriptors();
 	void _initPipelines();
-	void _initScene();
 
-	void _loadMeshes();
-	void _loadTextures();
-
-	void _uploadMesh(Mesh &mesh);
-	Material *_createMaterial(const std::string &name, VkPipeline pipeline, VkPipelineLayout pipelineLayout);
-
-	Mesh *_getMesh(const std::string &name);
-	Material *_getMaterial(const std::string &name);
-	Texture *_getTexture(const std::string &name);
-
-	void _drawObjects(VkCommandBuffer commandBuffer, RenderObject *pRenderObjects, uint32_t count);
+	void _uploadMesh(Mesh *pMesh);
 
 	void _updateUniformBuffer(uint32_t currentFrame);
 	void _updateSubpassSet();
@@ -107,6 +107,8 @@ class Renderer {
 	VkCommandBuffer _beginSingleTimeCommands();
 	void _endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
+	void _drawObjects(VkCommandBuffer commandBuffer);
+
 public:
 	void setCamera(Camera *pCamera);
 
@@ -114,6 +116,15 @@ public:
 	void windowResize(uint32_t width, uint32_t height);
 
 	void initImGui(GLFWwindow *pWindow);
+
+	RID objectCreate();
+	void objectSetMesh(RID object, Mesh *pMesh);
+	void objectSetTexture(RID object, Texture *pTexture);
+	void objectSetTransform(RID object, const glm::mat4 &transform);
+	void objectFree(RID object);
+
+	Mesh meshCreate(std::vector<Vertex> vertices, std::vector<uint32_t> indices);
+	Texture textureCreate(uint32_t width, uint32_t height, VkFormat format, const std::vector<uint8_t> &data);
 
 	void draw();
 	void waitIdle();

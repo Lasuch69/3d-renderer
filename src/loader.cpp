@@ -3,20 +3,20 @@
 
 #include "loader.h"
 
-Mesh Loader::load_mesh(const char *p_path) {
+bool Loader::load_mesh(const char *p_path, std::vector<Vertex> *pVertices, std::vector<uint32_t> *pIndices) {
 	tinyobj::attrib_t attrib;
 	std::vector<tinyobj::shape_t> shapes;
 	std::vector<tinyobj::material_t> materials;
 	std::string warn, err;
 
 	if (!tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, p_path)) {
-		return Mesh();
+		return false;
 	}
 
 	std::unordered_map<Vertex, uint32_t> uniqueVertices{};
 
-	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
+	pVertices->clear();
+	pIndices->clear();
 
 	for (const auto &shape : shapes) {
 		for (const auto &index : shape.mesh.indices) {
@@ -46,16 +46,16 @@ Mesh Loader::load_mesh(const char *p_path) {
 			};
 
 			if (uniqueVertices.count(vertex) == 0) {
-				uniqueVertices[vertex] = static_cast<uint32_t>(vertices.size());
+				uniqueVertices[vertex] = static_cast<uint32_t>(pVertices->size());
 
-				vertices.push_back(vertex);
+				pVertices->push_back(vertex);
 			}
 
-			indices.push_back(uniqueVertices[vertex]);
+			pIndices->push_back(uniqueVertices[vertex]);
 		}
 	}
 
-	return Mesh{ vertices, indices };
+	return true;
 }
 
 Image Loader::load_image(const char *p_path) {

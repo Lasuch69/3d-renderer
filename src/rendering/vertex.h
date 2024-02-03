@@ -65,14 +65,4 @@ struct hash<Vertex> {
 };
 } // namespace std
 
-struct Mesh {
-	std::vector<Vertex> vertices;
-	std::vector<uint32_t> indices;
-
-	AllocatedBuffer vertexBuffer;
-	AllocatedBuffer indexBuffer;
-
-	bool initialized = false;
-};
-
 #endif // !MESH_H

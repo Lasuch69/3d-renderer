@@ -16,7 +16,7 @@ private:
 	Camera *_camera;
 
 	GLFWwindow *_window;
-	Renderer *_renderingDevice;
+	Renderer *_renderer;
 
 public:
 	void windowCreate(uint32_t p_width, uint32_t p_height);

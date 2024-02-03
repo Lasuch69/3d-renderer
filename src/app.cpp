@@ -5,6 +5,7 @@
 #include <imgui_impl_vulkan.h>
 
 #include "app.h"
+#include "loader.h"
 
 void windowResizeCallback(GLFWwindow *p_window, int p_width, int p_height) {
 	App *app = reinterpret_cast<App *>(glfwGetWindowUserPointer(p_window));
@@ -30,11 +31,11 @@ void App::windowCreate(uint32_t p_width, uint32_t p_height) {
 	glfwSetFramebufferSizeCallback(_window, windowResizeCallback);
 	glfwSetCursorPosCallback(_window, cursorMotionCallback);
 
-	_renderingDevice->windowCreate(_window, p_width, p_height);
+	_renderer->windowCreate(_window, p_width, p_height);
 }
 
 void App::windowResize(uint32_t p_width, uint32_t p_height) {
-	_renderingDevice->windowResize(p_width, p_height);
+	_renderer->windowResize(p_width, p_height);
 }
 
 void App::run() {
@@ -44,13 +45,31 @@ void App::run() {
 	_io->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 	_io->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
 
-	_renderingDevice->initImGui(_window);
+	_renderer->initImGui(_window);
+
+	std::vector<Vertex> vertices;
+	std::vector<uint32_t> indices;
+
+	Loader::load_mesh("models/cube.obj", &vertices, &indices);
+	Mesh mesh = _renderer->meshCreate(vertices, indices);
+
+	Image image = Loader::load_image("textures/raw_plank_wall_diff_1k.png");
+	Texture texture = _renderer->textureCreate(image.width, image.height, image.format, image.data);
+
+	glm::mat4 transform = glm::mat4(1.0);
+
+	RID object = _renderer->objectCreate();
+	_renderer->objectSetMesh(object, &mesh);
+	_renderer->objectSetTransform(object, transform);
 
 	while (!glfwWindowShouldClose(_window)) {
 		glfwPollEvents();
 
 		std::chrono::high_resolution_clock timer;
 		auto start = timer.now();
+
+		transform = glm::rotate(transform, glm::radians(15.0f) * (float)_deltaTime, glm::vec3(0.0f, 0.0f, 1.0f));
+		_renderer->objectSetTransform(object, transform);
 
 		float x = glfwGetKey(_window, GLFW_KEY_A) - glfwGetKey(_window, GLFW_KEY_D);
 		float y = glfwGetKey(_window, GLFW_KEY_W) - glfwGetKey(_window, GLFW_KEY_S);
@@ -82,13 +101,13 @@ void App::run() {
 
 		ImGui::Render();
 
-		_renderingDevice->draw();
+		_renderer->draw();
 
 		auto stop = timer.now();
 		_deltaTime = (std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() / 1000000.0);
 	}
 
-	_renderingDevice->waitIdle();
+	_renderer->waitIdle();
 }
 
 void App::cameraMove(double p_x, double p_y) {
@@ -116,12 +135,12 @@ App::App(bool p_validationLayers) {
 	_camera = new Camera();
 	_camera->setPosition(glm::vec3(0.0f, 0.0f, 0.5f));
 
-	_renderingDevice = new Renderer(p_validationLayers);
-	_renderingDevice->setCamera(_camera);
+	_renderer = new Renderer(p_validationLayers);
+	_renderer->setCamera(_camera);
 }
 
 App::~App() {
-	free(_renderingDevice);
+	free(_renderer);
 
 	if (_window) {
 		glfwDestroyWindow(_window);

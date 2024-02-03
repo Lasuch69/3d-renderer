@@ -1,4 +1,5 @@
 #include <array>
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 
@@ -6,9 +7,7 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 
-#include "../loader.h"
 #include "renderer.h"
-#include "vulkan_context.h"
 
 #include "shaders/material.glsl.gen.h"
 #include "shaders/tonemapping.glsl.gen.h"
@@ -221,10 +220,10 @@ void Renderer::initImGui(GLFWwindow *pWindow) {
 
 void Renderer::_initPipelines() {
 	{
-		MaterialShaderRD materialShader;
+		MaterialShaderRD shader;
 
-		VkShaderModule materialVertexModule = createShaderModule(_context->getDevice(), materialShader.getVertexCode());
-		VkShaderModule materialFragmentModule = createShaderModule(_context->getDevice(), materialShader.getFragmentCode());
+		VkShaderModule vertexModule = createShaderModule(_context->getDevice(), shader.getVertexCode());
+		VkShaderModule fragmentModule = createShaderModule(_context->getDevice(), shader.getFragmentCode());
 
 		VkDescriptorSetLayout setLayouts[] = { _uniformSetLayout, _textureSetLayout };
 
@@ -233,228 +232,74 @@ void Renderer::_initPipelines() {
 		pushConstant.size = sizeof(MeshPushConstants);
 		pushConstant.stageFlags = VK_SHADER_STAGE_VERTEX_BIT;
 
-		VkPipelineLayout materialPipelineLayout = _createPipelineLayout(setLayouts, 2, &pushConstant, 1);
-		VkPipeline materialPipeline = _createPipeline(materialPipelineLayout, materialVertexModule, materialFragmentModule, 0);
+		VkPipelineLayout pipelineLayout = _createPipelineLayout(setLayouts, 2, &pushConstant, 1);
+		VkPipeline pipeline = _createPipeline(pipelineLayout, vertexModule, fragmentModule, 0);
 
-		vkDestroyShaderModule(_context->getDevice(), materialFragmentModule, nullptr);
-		vkDestroyShaderModule(_context->getDevice(), materialVertexModule, nullptr);
+		vkDestroyShaderModule(_context->getDevice(), fragmentModule, nullptr);
+		vkDestroyShaderModule(_context->getDevice(), vertexModule, nullptr);
 
-		_createMaterial("material", materialPipeline, materialPipelineLayout);
+		VkDescriptorSetAllocateInfo allocInfo{};
+		allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+		allocInfo.descriptorPool = _descriptorPool;
+		allocInfo.descriptorSetCount = 1;
+		allocInfo.pSetLayouts = &_textureSetLayout;
+
+		VkDescriptorSet textureSet;
+		VK_CHECK(vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, &textureSet), "Failed to allocate texture set!");
+
+		_material = { textureSet, pipelineLayout, pipeline };
 	}
 
 	{
-		TonemappingShaderRD tonemappingShader;
+		TonemappingShaderRD shader;
 
-		VkShaderModule tonemappingVertexModule = createShaderModule(_context->getDevice(), tonemappingShader.getVertexCode());
-		VkShaderModule tonemappingFragmentModule = createShaderModule(_context->getDevice(), tonemappingShader.getFragmentCode());
+		VkShaderModule vertexModule = createShaderModule(_context->getDevice(), shader.getVertexCode());
+		VkShaderModule fragmentModulee = createShaderModule(_context->getDevice(), shader.getFragmentCode());
 
-		VkPipelineLayout tonemappingPipelineLayout = _createPipelineLayout(&_subpassSetLayout, 1, nullptr, 0);
-		VkPipeline tonemappingPipeline = _createPipeline(tonemappingPipelineLayout, tonemappingVertexModule, tonemappingFragmentModule, 1);
+		VkPipelineLayout pipelineLayout = _createPipelineLayout(&_subpassSetLayout, 1, nullptr, 0);
+		VkPipeline pipeline = _createPipeline(pipelineLayout, vertexModule, fragmentModulee, 1);
 
-		vkDestroyShaderModule(_context->getDevice(), tonemappingFragmentModule, nullptr);
-		vkDestroyShaderModule(_context->getDevice(), tonemappingVertexModule, nullptr);
+		vkDestroyShaderModule(_context->getDevice(), fragmentModulee, nullptr);
+		vkDestroyShaderModule(_context->getDevice(), vertexModule, nullptr);
 
-		_tonemapping.pipelineLayout = tonemappingPipelineLayout;
-		_tonemapping.pipeline = tonemappingPipeline;
+		_tonemapping = { VK_NULL_HANDLE, pipelineLayout, pipeline };
 	}
 }
 
-void Renderer::_initScene() {
-	Material *material = _getMaterial("material");
-
-	RenderObject cube;
-	cube.mesh = _getMesh("cube");
-	cube.material = material;
-	cube.transformMatrix = glm::mat4(1.0f);
-
-	_renderObjects.push_back(cube);
-
-	RenderObject sphere;
-	sphere.mesh = _getMesh("sphere");
-	sphere.material = material;
-	sphere.transformMatrix = glm::mat4{
-		0.5, 0, 0, 0,
-		0, 0.5, 0, 0,
-		0, 0, 0.5, 0,
-		-1.0, -1.0, 0.5, 1
-	};
-
-	_renderObjects.push_back(sphere);
-
-	Texture *texture = _getTexture("texture");
-
-	VkDescriptorSetAllocateInfo allocInfo{};
-	allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
-	allocInfo.descriptorPool = _descriptorPool;
-	allocInfo.descriptorSetCount = 1;
-	allocInfo.pSetLayouts = &_textureSetLayout;
-
-	VK_CHECK(vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, &material->textureSet), "Failed to allocate image set!");
-
-	VkDescriptorImageInfo imageInfo{};
-	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageInfo.imageView = texture->view;
-	imageInfo.sampler = texture->sampler;
-
-	VkWriteDescriptorSet descriptorWrite{};
-	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrite.dstSet = material->textureSet;
-	descriptorWrite.dstBinding = 0;
-	descriptorWrite.dstArrayElement = 0;
-	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	descriptorWrite.descriptorCount = 1;
-	descriptorWrite.pImageInfo = &imageInfo;
-
-	vkUpdateDescriptorSets(_context->getDevice(), 1, &descriptorWrite, 0, nullptr);
-}
-
-void Renderer::_loadMeshes() {
-	Mesh cube = Loader::load_mesh("models/cube.obj");
-	Mesh sphere = Loader::load_mesh("models/sphere.obj");
-
-	_uploadMesh(cube);
-	_uploadMesh(sphere);
-
-	_meshes["cube"] = cube;
-	_meshes["sphere"] = sphere;
-}
-
-void Renderer::_loadTextures() {
-	Image image = Loader::load_image("textures/raw_plank_wall_diff_1k.png");
-
-	Texture texture = _createTexture(image.width, image.height, image.format, image.data);
-	_textures["texture"] = texture;
-}
-
-void Renderer::_uploadMesh(Mesh &mesh) {
+void Renderer::_uploadMesh(Mesh *pMesh) {
 	// vertex
-	VkDeviceSize vertexBufferSize = sizeof(mesh.vertices[0]) * mesh.vertices.size();
+	VkDeviceSize vertexBufferSize = sizeof(pMesh->vertices[0]) * pMesh->vertices.size();
 
 	// allocate buffer
 	VmaAllocationInfo vertexAllocInfo;
-	mesh.vertexBuffer = _createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertexAllocInfo);
+	pMesh->vertexBuffer = _createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_VERTEX_BUFFER_BIT, vertexAllocInfo);
 
 	// transfer data
 	VmaAllocationInfo stagingAllocInfo;
 	AllocatedBuffer stagingBuffer = _createBuffer(vertexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingAllocInfo);
 
-	memcpy(stagingAllocInfo.pMappedData, mesh.vertices.data(), (size_t)vertexBufferSize);
+	memcpy(stagingAllocInfo.pMappedData, pMesh->vertices.data(), (size_t)vertexBufferSize);
 	vmaFlushAllocation(_allocator, stagingBuffer.allocation, 0, VK_WHOLE_SIZE);
-	_copyBuffer(stagingBuffer.buffer, mesh.vertexBuffer.buffer, vertexBufferSize);
+	_copyBuffer(stagingBuffer.buffer, pMesh->vertexBuffer.buffer, vertexBufferSize);
 
 	vmaDestroyBuffer(_allocator, stagingBuffer.buffer, stagingBuffer.allocation);
 
 	// index
-	VkDeviceSize indexBufferSize = sizeof(mesh.indices[0]) * mesh.indices.size();
+	VkDeviceSize indexBufferSize = sizeof(pMesh->indices[0]) * pMesh->indices.size();
 
 	// allocate buffer
 	VmaAllocationInfo indexAllocInfo;
-	mesh.indexBuffer = _createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indexAllocInfo);
+	pMesh->indexBuffer = _createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_DST_BIT | VK_BUFFER_USAGE_INDEX_BUFFER_BIT, indexAllocInfo);
 
 	// transfer data
 	stagingAllocInfo = {};
 	stagingBuffer = _createBuffer(indexBufferSize, VK_BUFFER_USAGE_TRANSFER_SRC_BIT, stagingAllocInfo);
 
-	memcpy(stagingAllocInfo.pMappedData, mesh.indices.data(), (size_t)indexBufferSize);
+	memcpy(stagingAllocInfo.pMappedData, pMesh->indices.data(), (size_t)indexBufferSize);
 	vmaFlushAllocation(_allocator, stagingBuffer.allocation, 0, VK_WHOLE_SIZE);
-	_copyBuffer(stagingBuffer.buffer, mesh.indexBuffer.buffer, indexBufferSize);
+	_copyBuffer(stagingBuffer.buffer, pMesh->indexBuffer.buffer, indexBufferSize);
 
 	vmaDestroyBuffer(_allocator, stagingBuffer.buffer, stagingBuffer.allocation);
-}
-
-Material *Renderer::_createMaterial(const std::string &name, VkPipeline pipeline, VkPipelineLayout pipelineLayout) {
-	Material mat;
-
-	mat.pipeline = pipeline;
-	mat.pipelineLayout = pipelineLayout;
-
-	_materials[name] = mat;
-	return &_materials[name];
-}
-
-Mesh *Renderer::_getMesh(const std::string &name) {
-	// search for the object, and return nullptr if not found
-	auto it = _meshes.find(name);
-	if (it == _meshes.end()) {
-		return nullptr;
-	} else {
-		return &(*it).second;
-	}
-}
-
-Material *Renderer::_getMaterial(const std::string &name) {
-	// search for the object, and return nullptr if not found
-	auto it = _materials.find(name);
-	if (it == _materials.end()) {
-		return nullptr;
-	} else {
-		return &(*it).second;
-	}
-}
-
-Texture *Renderer::_getTexture(const std::string &name) {
-	// search for the object, and return nullptr if not found
-	auto it = _textures.find(name);
-	if (it == _textures.end()) {
-		return nullptr;
-	} else {
-		return &(*it).second;
-	}
-}
-
-void Renderer::_drawObjects(VkCommandBuffer commandBuffer, RenderObject *pRenderObjects, uint32_t count) {
-	Mesh *lastMesh = nullptr;
-	Material *lastMaterial = nullptr;
-
-	for (int i = 0; i < count; i++) {
-		RenderObject object = pRenderObjects[i];
-
-		if (object.material != lastMaterial) {
-			vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipeline);
-
-			VkExtent2D extent = _context->getSwapchainExtent();
-
-			VkViewport viewport{};
-			viewport.x = 0.0f;
-			viewport.y = 0.0f;
-			viewport.width = (float)extent.width;
-			viewport.height = (float)extent.height;
-			viewport.minDepth = 0.0f;
-			viewport.maxDepth = 1.0f;
-			vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-			VkRect2D scissor{};
-			scissor.offset = { 0, 0 };
-			scissor.extent = extent;
-			vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-			lastMaterial = object.material;
-		}
-
-		MeshPushConstants constants;
-		constants.model = object.transformMatrix;
-
-		// upload the mesh to the gpu via pushconstants
-		vkCmdPushConstants(commandBuffer, object.material->pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
-
-		// only bind the mesh if its a different one from last bind
-		if (object.mesh != lastMesh) {
-			// bind the mesh vertex buffer with offset 0
-			VkDeviceSize offset = 0;
-			vkCmdBindVertexBuffers(commandBuffer, 0, 1, &object.mesh->vertexBuffer.buffer, &offset);
-
-			// bind descriptors
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 0, 1, &_uniformSets[i], 0, nullptr);
-			vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, object.material->pipelineLayout, 1, 1, &object.material->textureSet, 0, nullptr);
-
-			// bind index buffer
-			vkCmdBindIndexBuffer(commandBuffer, object.mesh->indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-			lastMesh = object.mesh;
-		}
-
-		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(object.mesh->indices.size()), 1, 0, 0, 0);
-	}
 }
 
 void Renderer::_updateUniformBuffer(uint32_t p_currentFrame) {
@@ -913,6 +758,49 @@ void Renderer::setCamera(Camera *pCamera) {
 	_camera = pCamera;
 }
 
+void Renderer::_drawObjects(VkCommandBuffer commandBuffer) {
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _material.pipeline);
+
+	VkExtent2D extent = _context->getSwapchainExtent();
+
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = (float)extent.width;
+	viewport.height = (float)extent.height;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = extent;
+	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+	for (auto iter = _objects.begin(); iter != _objects.end(); ++iter) {
+		Object object = iter->second;
+
+		MeshPushConstants constants;
+		constants.model = object.transform;
+
+		// upload the mesh to the gpu via pushconstants
+		vkCmdPushConstants(commandBuffer, _material.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
+
+		// bind the mesh vertex buffer with offset 0
+		VkDeviceSize offset = 0;
+		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &object.pMesh->vertexBuffer.buffer, &offset);
+
+		// bind descriptors
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _material.pipelineLayout, 0, 1, &_uniformSets[_currentFrame], 0, nullptr);
+		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _material.pipelineLayout, 1, 1, &_material.textureSet, 0, nullptr);
+
+		// bind index buffer
+		vkCmdBindIndexBuffer(commandBuffer, object.pMesh->indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+
+		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(object.pMesh->indices.size()), 1, 0, 0, 0);
+	}
+}
+
 void Renderer::windowCreate(GLFWwindow *pWindow, uint32_t width, uint32_t height) {
 	_context->windowCreate(pWindow, width, height);
 
@@ -920,13 +808,89 @@ void Renderer::windowCreate(GLFWwindow *pWindow, uint32_t width, uint32_t height
 	_initCommands();
 	_initDescriptors();
 	_initPipelines();
-	_loadMeshes();
-	_loadTextures();
-	_initScene();
 }
 
 void Renderer::windowResize(uint32_t width, uint32_t height) {
 	_context->windowResize(width, height);
+}
+
+RID Renderer::objectCreate() {
+	RID rid = _objectIdx;
+	_objectIdx += 1;
+
+	_objects[rid] = {};
+	return rid;
+}
+
+void Renderer::objectSetMesh(RID object, Mesh *pMesh) {
+	auto iter = _objects.find(object);
+	if (iter == _objects.end()) {
+		return;
+	}
+
+	Object *pObject;
+	pObject = &(*iter).second;
+	pObject->pMesh = pMesh;
+}
+
+void Renderer::objectSetTexture(RID object, Texture *pTexture) {
+	auto iter = _objects.find(object);
+	if (iter == _objects.end()) {
+		return;
+	}
+
+	Object *pObject;
+	pObject = &(*iter).second;
+	pObject->pTexture = pTexture;
+}
+
+void Renderer::objectSetTransform(RID object, const glm::mat4 &transform) {
+	auto iter = _objects.find(object);
+	if (iter == _objects.end()) {
+		return;
+	}
+
+	Object *pObject;
+	pObject = &(*iter).second;
+	pObject->transform = transform;
+}
+
+void Renderer::objectFree(RID object) {
+	_objects.erase(object);
+}
+
+Mesh Renderer::meshCreate(std::vector<Vertex> vertices, std::vector<uint32_t> indices) {
+	Mesh mesh = {};
+
+	mesh.vertices = vertices;
+	mesh.indices = indices;
+
+	_uploadMesh(&mesh);
+	return mesh;
+}
+
+Texture Renderer::textureCreate(uint32_t width, uint32_t height, VkFormat format, const std::vector<uint8_t> &data) {
+	Texture texture = _createTexture(width, height, format, data);
+
+	// TODO: this does not belong here!
+
+	VkDescriptorImageInfo imageInfo{};
+	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageInfo.imageView = texture.view;
+	imageInfo.sampler = texture.sampler;
+
+	VkWriteDescriptorSet descriptorWrite{};
+	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
+	descriptorWrite.dstSet = _material.textureSet;
+	descriptorWrite.dstBinding = 0;
+	descriptorWrite.dstArrayElement = 0;
+	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
+	descriptorWrite.descriptorCount = 1;
+	descriptorWrite.pImageInfo = &imageInfo;
+
+	vkUpdateDescriptorSets(_context->getDevice(), 1, &descriptorWrite, 0, nullptr);
+
+	return texture;
 }
 
 void Renderer::draw() {
@@ -974,7 +938,7 @@ void Renderer::draw() {
 
 	vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	_drawObjects(commandBuffer, _renderObjects.data(), _renderObjects.size());
+	_drawObjects(commandBuffer);
 
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
 

@@ -1,9 +1,10 @@
 #ifndef LOADER_H
 #define LOADER_H
 
+#include <cstdint>
 #include <vector>
 
-#include "rendering/mesh.h"
+#include "rendering/vertex.h"
 
 struct Image {
 	uint32_t width, height;
@@ -13,7 +14,7 @@ struct Image {
 
 class Loader {
 public:
-	static Mesh load_mesh(const char *p_path);
+	static bool load_mesh(const char *p_path, std::vector<Vertex> *pVertices, std::vector<uint32_t> *pIndices);
 	static Image load_image(const char *p_path);
 };
 
