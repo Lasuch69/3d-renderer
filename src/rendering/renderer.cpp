@@ -148,20 +148,7 @@ void Renderer::_initDescriptors() {
 
 		VK_CHECK(vkAllocateDescriptorSets(_context->getDevice(), &allocInfo, &_subpassSet), "Failed to allocate subpass set!");
 
-		VkDescriptorImageInfo imageInfo = {};
-		imageInfo.imageView = _context->getColorImageView(); // Replace with the actual image view of the previous subpass attachment
-		imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // Adjust based on the layout used in the previous subpass
-
-		VkWriteDescriptorSet writeDescriptorSet = {};
-		writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-		writeDescriptorSet.dstSet = _subpassSet;
-		writeDescriptorSet.dstBinding = 0;
-		writeDescriptorSet.dstArrayElement = 0;
-		writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
-		writeDescriptorSet.descriptorCount = 1;
-		writeDescriptorSet.pImageInfo = &imageInfo;
-
-		vkUpdateDescriptorSets(_context->getDevice(), 1, &writeDescriptorSet, 0, nullptr);
+		_writeImageSet(_subpassSet, _context->getColorImageView(), VK_NULL_HANDLE, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
 	}
 
 	// texture set layout
@@ -313,17 +300,18 @@ void Renderer::_updateUniformBuffer(uint32_t p_currentFrame) {
 	memcpy(_uniformAllocInfos[_currentFrame].pMappedData, &ubo, sizeof(ubo));
 }
 
-void Renderer::_updateSubpassSet() {
+void Renderer::_writeImageSet(VkDescriptorSet dstSet, VkImageView imageView, VkSampler sampler, VkDescriptorType descriptorType) {
 	VkDescriptorImageInfo imageInfo = {};
-	imageInfo.imageView = _context->getColorImageView(); // Replace with the actual image view of the previous subpass attachment
-	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL; // Adjust based on the layout used in the previous subpass
+	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
+	imageInfo.imageView = imageView;
+	imageInfo.sampler = sampler;
 
 	VkWriteDescriptorSet writeDescriptorSet = {};
 	writeDescriptorSet.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	writeDescriptorSet.dstSet = _subpassSet;
+	writeDescriptorSet.dstSet = dstSet;
 	writeDescriptorSet.dstBinding = 0;
 	writeDescriptorSet.dstArrayElement = 0;
-	writeDescriptorSet.descriptorType = VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT;
+	writeDescriptorSet.descriptorType = descriptorType;
 	writeDescriptorSet.descriptorCount = 1;
 	writeDescriptorSet.pImageInfo = &imageInfo;
 
@@ -873,22 +861,7 @@ Texture Renderer::textureCreate(uint32_t width, uint32_t height, VkFormat format
 	Texture texture = _createTexture(width, height, format, data);
 
 	// TODO: this does not belong here!
-
-	VkDescriptorImageInfo imageInfo{};
-	imageInfo.imageLayout = VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-	imageInfo.imageView = texture.view;
-	imageInfo.sampler = texture.sampler;
-
-	VkWriteDescriptorSet descriptorWrite{};
-	descriptorWrite.sType = VK_STRUCTURE_TYPE_WRITE_DESCRIPTOR_SET;
-	descriptorWrite.dstSet = _material.textureSet;
-	descriptorWrite.dstBinding = 0;
-	descriptorWrite.dstArrayElement = 0;
-	descriptorWrite.descriptorType = VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER;
-	descriptorWrite.descriptorCount = 1;
-	descriptorWrite.pImageInfo = &imageInfo;
-
-	vkUpdateDescriptorSets(_context->getDevice(), 1, &descriptorWrite, 0, nullptr);
+	_writeImageSet(_material.textureSet, texture.view, texture.sampler, VK_DESCRIPTOR_TYPE_COMBINED_IMAGE_SAMPLER);
 
 	return texture;
 }
@@ -908,8 +881,9 @@ void Renderer::draw() {
 		printf("Failed to acquire swapchain image!");
 	}
 
+	// update subpass attachment
 	vkDeviceWaitIdle(_context->getDevice());
-	_updateSubpassSet();
+	_writeImageSet(_subpassSet, _context->getColorImageView(), VK_NULL_HANDLE, VK_DESCRIPTOR_TYPE_INPUT_ATTACHMENT);
 
 	_updateUniformBuffer(_currentFrame);
 

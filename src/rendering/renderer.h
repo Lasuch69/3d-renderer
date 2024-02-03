@@ -91,7 +91,8 @@ class Renderer {
 	void _uploadMesh(Mesh *pMesh);
 
 	void _updateUniformBuffer(uint32_t currentFrame);
-	void _updateSubpassSet();
+
+	void _writeImageSet(VkDescriptorSet dstSet, VkImageView imageView, VkSampler sampler, VkDescriptorType descriptorType);
 
 	AllocatedBuffer _createBuffer(VkDeviceSize size, VkBufferUsageFlags usage, VmaAllocationInfo &allocInfo);
 	void _copyBuffer(VkBuffer srcBuffer, VkBuffer dstBuffer, VkDeviceSize size);
