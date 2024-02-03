@@ -5,8 +5,8 @@
 #include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 
-#include "camera.h"
 #include "loader.h"
+#include "rendering/camera.h"
 #include "rendering/renderer.h"
 
 const uint32_t WIDTH = 800;
@@ -49,12 +49,9 @@ int run(State *pState, GLFWwindow *pWindow) {
 	pIo->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 	pIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
 
-	Camera *pCamera = new Camera();
-	pCamera->setPosition(glm::vec3(0.0, 3.0, 1.0));
-
 	Renderer *pRenderer = pState->pRenderer;
+	pRenderer->getCamera()->transform = glm::translate(glm::mat4(1.0), glm::vec3(0.0, 2.0, 0.5));
 	pRenderer->initImGui(pWindow);
-	pRenderer->setCamera(pCamera);
 
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;

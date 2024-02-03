@@ -7,8 +7,7 @@
 #include <GLFW/glfw3.h>
 #include <imgui.h>
 
-#include "../camera.h"
-
+#include "camera.h"
 #include "types.h"
 #include "vertex.h"
 #include "vulkan_context.h"
@@ -112,7 +111,7 @@ class Renderer {
 	void _drawObjects(VkCommandBuffer commandBuffer);
 
 public:
-	void setCamera(Camera *pCamera);
+	Camera *getCamera();
 
 	void windowCreate(GLFWwindow *pWindow, uint32_t width, uint32_t height);
 	void windowResize(uint32_t width, uint32_t height);

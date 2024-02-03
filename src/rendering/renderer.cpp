@@ -742,10 +742,6 @@ void Renderer::_endSingleTimeCommands(VkCommandBuffer commandBuffer) {
 	vkFreeCommandBuffers(_context->getDevice(), _context->getCommandPool(), 1, &commandBuffer);
 }
 
-void Renderer::setCamera(Camera *pCamera) {
-	_camera = pCamera;
-}
-
 void Renderer::_drawObjects(VkCommandBuffer commandBuffer) {
 	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _material.pipeline);
 
@@ -787,6 +783,10 @@ void Renderer::_drawObjects(VkCommandBuffer commandBuffer) {
 
 		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(object.pMesh->indices.size()), 1, 0, 0, 0);
 	}
+}
+
+Camera *Renderer::getCamera() {
+	return _camera;
 }
 
 void Renderer::windowCreate(GLFWwindow *pWindow, uint32_t width, uint32_t height) {
@@ -956,8 +956,10 @@ void Renderer::waitIdle() {
 
 Renderer::Renderer(bool useValidation) {
 	_context = new VulkanContext(useValidation);
+	_camera = new Camera();
 }
 
 Renderer::~Renderer() {
+	free(_camera);
 	free(_context);
 }
