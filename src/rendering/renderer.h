@@ -9,6 +9,7 @@
 
 #include "../camera.h"
 
+#include "types.h"
 #include "vertex.h"
 #include "vulkan_context.h"
 
