@@ -27,7 +27,11 @@ static VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
 		VkDebugUtilsMessageTypeFlagsEXT messageType,
 		const VkDebugUtilsMessengerCallbackDataEXT *pCallbackData,
 		void *pUserData) {
-	printf("VALIDATION: %s\n", pCallbackData->pMessage);
+	if (messageSeverity & VK_DEBUG_UTILS_MESSAGE_SEVERITY_VERBOSE_BIT_EXT) {
+		return VK_FALSE;
+	}
+
+	printf("%s\n", pCallbackData->pMessage);
 	return VK_FALSE;
 }
 
