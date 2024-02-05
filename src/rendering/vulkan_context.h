@@ -7,8 +7,6 @@
 
 #include <vulkan/vulkan.h>
 
-#include <GLFW/glfw3.h>
-
 #define VK_CHECK(x, msg)                         \
 	{                                            \
 		VkResult err = x;                        \
@@ -99,9 +97,8 @@ private:
 	SyncObject _syncObjects[MAX_FRAMES_IN_FLIGHT];
 
 	// instance
-	void _createInstance(bool useValidation = false);
+	void _createInstance(std::vector<const char *> extensions, bool useValidation = false);
 	bool _checkValidationLayerSupport();
-	std::vector<const char *> _getRequiredExtensions(bool useValidation);
 
 	// physical device
 	VkPhysicalDevice _pickPhysicalDevice(VkSurfaceKHR surface);
@@ -130,7 +127,7 @@ private:
 	void _createSyncObjects();
 
 public:
-	void windowCreate(GLFWwindow *pWindow, uint32_t width, uint32_t height);
+	void windowCreate(VkSurfaceKHR surface, uint32_t width, uint32_t height);
 	void windowResize(uint32_t width, uint32_t height);
 
 	void recreateSwapchain();
@@ -158,7 +155,7 @@ public:
 	VkImage getColorImage() { return _colorImage; }
 	VkImageView getColorImageView() { return _colorImageView; }
 
-	VulkanContext(bool useValidation);
+	VulkanContext(std::vector<const char *> extensions, bool useValidation);
 	~VulkanContext();
 };
 

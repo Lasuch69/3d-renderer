@@ -53,7 +53,7 @@ uint32_t clamp(uint32_t value, uint32_t min_n, uint32_t max_n) {
 	return min(max(value, min_n), max_n);
 }
 
-void VulkanContext::_createInstance(bool useValidation) {
+void VulkanContext::_createInstance(std::vector<const char *> extensions, bool useValidation) {
 	if (useValidation && !_checkValidationLayerSupport()) {
 		printf("Validation layers requested, but not available!\n");
 		useValidation = false;
@@ -67,7 +67,8 @@ void VulkanContext::_createInstance(bool useValidation) {
 	appInfo.engineVersion = VK_MAKE_VERSION(1, 0, 0);
 	appInfo.apiVersion = VK_API_VERSION_1_0;
 
-	std::vector<const char *> extensions = _getRequiredExtensions(useValidation);
+	if (useValidation)
+		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
 
 	VkInstanceCreateInfo createInfo{};
 	createInfo.sType = VK_STRUCTURE_TYPE_INSTANCE_CREATE_INFO;
@@ -122,19 +123,6 @@ bool VulkanContext::_checkValidationLayerSupport() {
 	}
 
 	return true;
-}
-
-std::vector<const char *> VulkanContext::_getRequiredExtensions(bool useValidation) {
-	uint32_t glfwExtensionCount = 0;
-	const char **glfwExtensions;
-	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-	std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
-
-	if (useValidation)
-		extensions.push_back(VK_EXT_DEBUG_UTILS_EXTENSION_NAME);
-
-	return extensions;
 }
 
 VkPhysicalDevice VulkanContext::_pickPhysicalDevice(VkSurfaceKHR surface) {
@@ -657,10 +645,7 @@ void VulkanContext::_createSyncObjects() {
 	}
 }
 
-void VulkanContext::windowCreate(GLFWwindow *pWindow, uint32_t width, uint32_t height) {
-	VkSurfaceKHR surface;
-	glfwCreateWindowSurface(_instance, pWindow, nullptr, &surface);
-
+void VulkanContext::windowCreate(VkSurfaceKHR surface, uint32_t width, uint32_t height) {
 	_physicalDevice = _pickPhysicalDevice(surface);
 	_device = _createDevice(_physicalDevice, surface);
 
@@ -734,8 +719,8 @@ void VulkanContext::submit(uint32_t currentFrame, uint32_t imageIndex, VkCommand
 	}
 }
 
-VulkanContext::VulkanContext(bool useValidation) {
-	_createInstance(useValidation);
+VulkanContext::VulkanContext(std::vector<const char *> extensions, bool useValidation) {
+	_createInstance(extensions, useValidation);
 }
 
 VulkanContext::~VulkanContext() {

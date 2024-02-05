@@ -4,7 +4,6 @@
 #include <cstdint>
 #include <unordered_map>
 
-#include <GLFW/glfw3.h>
 #include <imgui.h>
 
 #include "camera.h"
@@ -111,12 +110,13 @@ class Renderer {
 	void _drawObjects(VkCommandBuffer commandBuffer);
 
 public:
+	VkInstance getInstance();
 	Camera *getCamera();
 
-	void windowCreate(GLFWwindow *pWindow, uint32_t width, uint32_t height);
+	void windowInit(VkSurfaceKHR surface, uint32_t width, uint32_t height);
 	void windowResize(uint32_t width, uint32_t height);
 
-	void initImGui(GLFWwindow *pWindow);
+	void initImGui();
 
 	RID objectCreate();
 	void objectSetMesh(RID object, Mesh *pMesh);
@@ -130,7 +130,7 @@ public:
 	void draw();
 	void waitIdle();
 
-	Renderer(bool useValidation);
+	Renderer(std::vector<const char *> extensions, bool useValidation);
 	~Renderer();
 };
 

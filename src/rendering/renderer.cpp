@@ -4,7 +4,6 @@
 #include <cstring>
 
 #include <imgui.h>
-#include <imgui_impl_glfw.h>
 #include <imgui_impl_vulkan.h>
 
 #include "renderer.h"
@@ -179,9 +178,8 @@ static void vkCheckResult(VkResult err) {
 		abort();
 }
 
-void Renderer::initImGui(GLFWwindow *pWindow) {
+void Renderer::initImGui() {
 	// Setup Platform/Renderer backends
-	ImGui_ImplGlfw_InitForVulkan(pWindow, true);
 	ImGui_ImplVulkan_InitInfo init_info = {};
 	init_info.Instance = _context->getInstance();
 	init_info.PhysicalDevice = _context->getPhysicalDevice();
@@ -785,12 +783,16 @@ void Renderer::_drawObjects(VkCommandBuffer commandBuffer) {
 	}
 }
 
+VkInstance Renderer::getInstance() {
+	return _context->getInstance();
+}
+
 Camera *Renderer::getCamera() {
 	return _camera;
 }
 
-void Renderer::windowCreate(GLFWwindow *pWindow, uint32_t width, uint32_t height) {
-	_context->windowCreate(pWindow, width, height);
+void Renderer::windowInit(VkSurfaceKHR surface, uint32_t width, uint32_t height) {
+	_context->windowCreate(surface, width, height);
 
 	_initAllocator();
 	_initCommands();
@@ -954,8 +956,8 @@ void Renderer::waitIdle() {
 	vkDeviceWaitIdle(_context->getDevice());
 }
 
-Renderer::Renderer(bool useValidation) {
-	_context = new VulkanContext(useValidation);
+Renderer::Renderer(std::vector<const char *> extensions, bool useValidation) {
+	_context = new VulkanContext(extensions, useValidation);
 	_camera = new Camera();
 }
 

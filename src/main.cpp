@@ -11,6 +11,9 @@
 
 #include "rendering/renderer.h"
 
+#include <GLFW/glfw3.h>
+#include <vector>
+
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
@@ -71,6 +74,16 @@ GLFWwindow *windowCreate(uint32_t width, uint32_t height) {
 	return pWindow;
 }
 
+std::vector<const char *> getRequiredExtensions() {
+	uint32_t glfwExtensionCount = 0;
+	const char **glfwExtensions;
+	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
+
+	std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+
+	return extensions;
+}
+
 int run(State *pState, GLFWwindow *pWindow) {
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
@@ -79,8 +92,10 @@ int run(State *pState, GLFWwindow *pWindow) {
 	pIo->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 	pIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
 
+	ImGui_ImplGlfw_InitForVulkan(pWindow, true);
+
 	Renderer *pRenderer = pState->pRenderer;
-	pRenderer->initImGui(pWindow);
+	pRenderer->initImGui();
 
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
@@ -175,8 +190,13 @@ int main(int argc, char *argv[]) {
 
 	GLFWwindow *pWindow = windowCreate(WIDTH, HEIGHT);
 
-	Renderer *pRenderer = new Renderer(useValidation);
-	pRenderer->windowCreate(pWindow, WIDTH, HEIGHT);
+	std::vector<const char *> extensions = getRequiredExtensions();
+	Renderer *pRenderer = new Renderer(extensions, useValidation);
+
+	VkSurfaceKHR surface;
+	glfwCreateWindowSurface(pRenderer->getInstance(), pWindow, nullptr, &surface);
+
+	pRenderer->windowInit(surface, WIDTH, HEIGHT);
 
 	CameraController *pCameraController = new CameraController();
 	pCameraController->setCamera(pRenderer->getCamera());
