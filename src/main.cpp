@@ -1,90 +1,37 @@
-#include <chrono>
 #include <cstdlib>
 #include <cstring>
+#include <vector>
+
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_vulkan.h>
 
 #include <imgui.h>
-#include <imgui_impl_glfw.h>
+#include <imgui_impl_sdl2.h>
 #include <imgui_impl_vulkan.h>
 
 #include "camera_controller.h"
 #include "loader.h"
-
 #include "rendering/renderer.h"
-
-#include <GLFW/glfw3.h>
-#include <vector>
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
-
-double lastX;
-double lastY;
-
-bool resetCursor = true;
 
 struct State {
 	Renderer *pRenderer;
 	CameraController *pCameraController;
 };
 
-void onWindowResized(GLFWwindow *pWindow, int width, int height) {
-	State *pState = reinterpret_cast<State *>(glfwGetWindowUserPointer(pWindow));
+std::vector<const char *> getRequiredExtensions(SDL_Window *pWindow) {
+	uint32_t extensionCount = 0;
+	SDL_Vulkan_GetInstanceExtensions(nullptr, &extensionCount, nullptr);
 
-	glfwGetFramebufferSize(pWindow, &width, &height);
-	pState->pRenderer->windowResize(width, height);
-}
-
-void onCursorMotion(GLFWwindow *pWindow, double x, double y) {
-	State *pState = reinterpret_cast<State *>(glfwGetWindowUserPointer(pWindow));
-
-	if (resetCursor) {
-		lastX = x;
-		lastY = y;
-
-		resetCursor = false;
-	}
-
-	bool isControllerValid = pState->pCameraController != nullptr;
-	bool isCursorDisabled = glfwGetInputMode(pWindow, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
-
-	if (isControllerValid && isCursorDisabled)
-		pState->pCameraController->input(x - lastX, y - lastY);
-
-	lastX = x;
-	lastY = y;
-}
-
-void onCursorEnter(GLFWwindow *pWindow, int entered) {
-	if (entered != GLFW_TRUE)
-		return;
-
-	resetCursor = true;
-}
-
-GLFWwindow *windowCreate(uint32_t width, uint32_t height) {
-	GLFWwindow *pWindow = glfwCreateWindow(width, height, "3D Renderer", nullptr, nullptr);
-
-	if (glfwRawMouseMotionSupported())
-		glfwSetInputMode(pWindow, GLFW_RAW_MOUSE_MOTION, GLFW_TRUE);
-
-	glfwSetFramebufferSizeCallback(pWindow, onWindowResized);
-	glfwSetCursorPosCallback(pWindow, onCursorMotion);
-	glfwSetCursorEnterCallback(pWindow, onCursorEnter);
-
-	return pWindow;
-}
-
-std::vector<const char *> getRequiredExtensions() {
-	uint32_t glfwExtensionCount = 0;
-	const char **glfwExtensions;
-	glfwExtensions = glfwGetRequiredInstanceExtensions(&glfwExtensionCount);
-
-	std::vector<const char *> extensions(glfwExtensions, glfwExtensions + glfwExtensionCount);
+	std::vector<const char *> extensions(extensionCount);
+	SDL_Vulkan_GetInstanceExtensions(nullptr, &extensionCount, extensions.data());
 
 	return extensions;
 }
 
-int run(State *pState, GLFWwindow *pWindow) {
+int run(State *pState, SDL_Window *pWindow) {
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 
@@ -92,7 +39,7 @@ int run(State *pState, GLFWwindow *pWindow) {
 	pIo->ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
 	pIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
 
-	ImGui_ImplGlfw_InitForVulkan(pWindow, true);
+	ImGui_ImplSDL2_InitForVulkan(pWindow);
 
 	Renderer *pRenderer = pState->pRenderer;
 	pRenderer->initImGui();
@@ -110,55 +57,91 @@ int run(State *pState, GLFWwindow *pWindow) {
 	pRenderer->objectSetMesh(object, &mesh);
 	pRenderer->objectSetTransform(object, glm::mat4(1.0));
 
-	bool pressed = false;
-	double deltaTime = 0.0;
+	uint64_t now = SDL_GetPerformanceCounter();
+	uint64_t last = 0;
+	double deltaTime = 0;
 
-	while (!glfwWindowShouldClose(pWindow)) {
-		glfwPollEvents();
+	bool quit = false;
 
-		std::chrono::high_resolution_clock timer;
-		auto start = timer.now();
+	int resetCursor = false;
 
-		bool isCursorDisabled = glfwGetInputMode(pWindow, GLFW_CURSOR) == GLFW_CURSOR_DISABLED;
+	while (!quit) {
+		last = now;
+		now = SDL_GetPerformanceCounter();
 
-		if (glfwGetKey(pWindow, GLFW_KEY_F3) && !pressed) {
-			pressed = true;
+		deltaTime = (double)((now - last) / (double)SDL_GetPerformanceFrequency());
 
-			if (isCursorDisabled) {
-				glfwSetInputMode(pWindow, GLFW_CURSOR, GLFW_CURSOR_NORMAL);
-			} else {
-				glfwSetInputMode(pWindow, GLFW_CURSOR, GLFW_CURSOR_DISABLED);
+		SDL_Event event;
+		while (SDL_PollEvent(&event)) {
+			if (event.type == SDL_QUIT) {
+				quit = true;
+			}
+
+			if (event.type == SDL_WINDOWEVENT) {
+				switch (event.window.event) {
+					case SDL_WINDOWEVENT_RESIZED:
+						int width, height;
+						SDL_Vulkan_GetDrawableSize(pWindow, &width, &height);
+						pRenderer->windowResize(width, height);
+						break;
+					default:
+						break;
+				}
+			}
+
+			if (event.type == SDL_KEYDOWN && event.key.keysym.scancode == SDL_SCANCODE_F3) {
+				if (event.key.repeat)
+					continue;
+
+				SDL_bool isRelative = SDL_GetRelativeMouseMode();
+
+				if (isRelative) {
+					SDL_SetRelativeMouseMode(SDL_FALSE);
+				} else {
+					SDL_SetRelativeMouseMode(SDL_TRUE);
+					resetCursor = true;
+				}
 			}
 		}
 
-		if (!glfwGetKey(pWindow, GLFW_KEY_F3) && pressed) {
-			pressed = false;
+		SDL_bool handleInput = SDL_GetRelativeMouseMode();
+
+		if (handleInput) {
+			int x, y;
+			SDL_GetRelativeMouseState(&x, &y);
+
+			if (resetCursor) {
+				resetCursor = false;
+
+				x = 0;
+				y = 0;
+			}
+
+			pState->pCameraController->input(x, y);
+
+			const uint8_t *keys = SDL_GetKeyboardState(nullptr);
+
+			glm::vec2 input = {
+				keys[SDL_SCANCODE_D] - keys[SDL_SCANCODE_A],
+				keys[SDL_SCANCODE_W] - keys[SDL_SCANCODE_S],
+			};
+
+			glm::vec3 direction = pState->pCameraController->getMovementDirection(input);
+			pState->pCameraController->translate(direction * 2.0f * (float)deltaTime);
 		}
 
-		glm::vec2 input = {
-			glfwGetKey(pWindow, GLFW_KEY_D) - glfwGetKey(pWindow, GLFW_KEY_A),
-			glfwGetKey(pWindow, GLFW_KEY_W) - glfwGetKey(pWindow, GLFW_KEY_S)
-		};
-
-		glm::vec3 direction = pState->pCameraController->getMovementDirection(input);
-
-		if (isCursorDisabled)
-			pState->pCameraController->translate(direction * (float)deltaTime * 2.0f);
-
 		ImGui_ImplVulkan_NewFrame();
-		ImGui_ImplGlfw_NewFrame();
+		ImGui_ImplSDL2_NewFrame();
 		ImGui::NewFrame();
 
 		{
 			ImGui::Begin("Hello, world!");
 
 			ImGui::Text("%.1f FPS", pIo->Framerate);
-			ImGui::Text("Delta time: %.4fms", pIo->DeltaTime * 1000.0);
+			ImGui::Text("Delta time: %.4fms", deltaTime * 1000);
 
 			glm::vec3 position = pState->pCameraController->getPosition();
 			ImGui::Text("Camera position: (%.2f, %.2f, %.2f)", position.x, position.y, position.z);
-
-			ImGui::Text("Input (%.2f, %.2f)", input.x, input.y);
 
 			ImGui::End();
 		}
@@ -166,9 +149,6 @@ int run(State *pState, GLFWwindow *pWindow) {
 		ImGui::Render();
 
 		pRenderer->draw();
-
-		auto stop = timer.now();
-		deltaTime = (std::chrono::duration_cast<std::chrono::microseconds>(stop - start).count() / 1000000.0);
 	}
 
 	pRenderer->waitIdle();
@@ -185,18 +165,31 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
-	glfwInit();
-	glfwWindowHint(GLFW_CLIENT_API, GLFW_NO_API);
+	// Wayland doesn't work, so force x11.
+	SDL_SetHint(SDL_HINT_VIDEODRIVER, "x11");
 
-	GLFWwindow *pWindow = windowCreate(WIDTH, HEIGHT);
+	SDL_Init(SDL_INIT_VIDEO);
+	SDL_Window *pWindow = SDL_CreateWindow("3D Renderer", SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, WIDTH, HEIGHT, SDL_WINDOW_RESIZABLE | SDL_WINDOW_VULKAN);
 
-	std::vector<const char *> extensions = getRequiredExtensions();
+	if (pWindow == nullptr) {
+		SDL_LogCritical(SDL_LOG_CATEGORY_VIDEO, "Failed to create window!\n");
+		return EXIT_FAILURE;
+	}
+
+	std::vector<const char *> extensions = getRequiredExtensions(pWindow);
 	Renderer *pRenderer = new Renderer(extensions, useValidation);
 
 	VkSurfaceKHR surface;
-	glfwCreateWindowSurface(pRenderer->getInstance(), pWindow, nullptr, &surface);
+	SDL_bool result = SDL_Vulkan_CreateSurface(pWindow, pRenderer->getInstance(), &surface);
 
-	pRenderer->windowInit(surface, WIDTH, HEIGHT);
+	if (result == SDL_FALSE) {
+		SDL_LogCritical(SDL_LOG_CATEGORY_VIDEO, "Failed to create surface!\n");
+		return EXIT_FAILURE;
+	}
+
+	int width, height;
+	SDL_Vulkan_GetDrawableSize(pWindow, &width, &height);
+	pRenderer->windowInit(surface, width, height);
 
 	CameraController *pCameraController = new CameraController();
 	pCameraController->setCamera(pRenderer->getCamera());
@@ -206,13 +199,12 @@ int main(int argc, char *argv[]) {
 	pState->pRenderer = pRenderer;
 	pState->pCameraController = pCameraController;
 
-	glfwSetWindowUserPointer(pWindow, pState);
-
 	run(pState, pWindow);
 
 	free(pRenderer);
-	glfwDestroyWindow(pWindow);
 
-	glfwTerminate();
+	SDL_DestroyWindow(pWindow);
+	SDL_Quit();
+
 	return EXIT_SUCCESS;
 }

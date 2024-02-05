@@ -19,6 +19,7 @@ include = [
     'thirdparty/imgui',
     'thirdparty/imgui/backends',
     'thirdparty/glslang',
+    'SDL2/include'
 ]
 
 env = Environment(CC='gcc', CCFLAGS='-O2', COMPILATIONDB_USE_ABSPATH=True, CPPPATH = include)
@@ -26,4 +27,4 @@ env.Tool('compilation_db')
 env.CompilationDatabase()
 
 files = find('*.cpp', '.')
-env.Program('renderer', files, LIBS = ['glfw', 'vulkan'])
+env.Program('renderer', files, LIBS = ['SDL2', 'vulkan'])
