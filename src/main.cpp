@@ -17,12 +17,7 @@
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
 
-struct State {
-	Renderer *pRenderer;
-	CameraController *pCameraController;
-};
-
-std::vector<const char *> getRequiredExtensions(SDL_Window *pWindow) {
+std::vector<const char *> getRequiredExtensions() {
 	uint32_t extensionCount = 0;
 	SDL_Vulkan_GetInstanceExtensions(nullptr, &extensionCount, nullptr);
 
@@ -32,7 +27,7 @@ std::vector<const char *> getRequiredExtensions(SDL_Window *pWindow) {
 	return extensions;
 }
 
-int run(State *pState, SDL_Window *pWindow) {
+int run(SDL_Window *pWindow, Renderer *pRenderer) {
 	IMGUI_CHECKVERSION();
 	ImGui::CreateContext();
 
@@ -41,9 +36,11 @@ int run(State *pState, SDL_Window *pWindow) {
 	pIo->ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad; // Enable Gamepad Controls
 
 	ImGui_ImplSDL2_InitForVulkan(pWindow);
-
-	Renderer *pRenderer = pState->pRenderer;
 	pRenderer->initImGui();
+
+	CameraController *pCameraController = new CameraController();
+	pCameraController->setCamera(pRenderer->getCamera());
+	pCameraController->setPosition(glm::vec3(0.0, 2.0, 0.5));
 
 	std::vector<Vertex> vertices;
 	std::vector<uint32_t> indices;
@@ -57,10 +54,6 @@ int run(State *pState, SDL_Window *pWindow) {
 	RID object = pRenderer->objectCreate();
 	pRenderer->objectSetMesh(object, &mesh);
 	pRenderer->objectSetTransform(object, glm::mat4(1.0));
-
-	uint64_t now = SDL_GetPerformanceCounter();
-	uint64_t last = 0;
-	double deltaTime = 0;
 
 	bool quit = false;
 
@@ -119,7 +112,7 @@ int run(State *pState, SDL_Window *pWindow) {
 				y = 0;
 			}
 
-			pState->pCameraController->input(x, y);
+			pCameraController->input(x, y);
 
 			const uint8_t *keys = SDL_GetKeyboardState(nullptr);
 
@@ -128,8 +121,8 @@ int run(State *pState, SDL_Window *pWindow) {
 				keys[SDL_SCANCODE_W] - keys[SDL_SCANCODE_S],
 			};
 
-			glm::vec3 direction = pState->pCameraController->getMovementDirection(input);
-			pState->pCameraController->translate(direction * 2.0f * (float)deltaTime);
+			glm::vec3 direction = pCameraController->getMovementDirection(input);
+			pCameraController->translate(direction * 2.0f * (float)deltaTime);
 		}
 
 		ImGui_ImplVulkan_NewFrame();
@@ -142,7 +135,7 @@ int run(State *pState, SDL_Window *pWindow) {
 			ImGui::Text("%.1f FPS", pIo->Framerate);
 			ImGui::Text("Delta time: %.4fms", deltaTime * 1000);
 
-			glm::vec3 position = pState->pCameraController->getPosition();
+			glm::vec3 position = pCameraController->getPosition();
 			ImGui::Text("Camera position: (%.2f, %.2f, %.2f)", position.x, position.y, position.z);
 
 			ImGui::End();
@@ -154,6 +147,10 @@ int run(State *pState, SDL_Window *pWindow) {
 	}
 
 	pRenderer->waitIdle();
+	pRenderer->objectFree(object);
+
+	free(pCameraController);
+	free(pTime);
 
 	return EXIT_SUCCESS;
 }
@@ -178,7 +175,7 @@ int main(int argc, char *argv[]) {
 		return EXIT_FAILURE;
 	}
 
-	std::vector<const char *> extensions = getRequiredExtensions(pWindow);
+	std::vector<const char *> extensions = getRequiredExtensions();
 	Renderer *pRenderer = new Renderer(extensions, useValidation);
 
 	VkSurfaceKHR surface;
@@ -193,15 +190,7 @@ int main(int argc, char *argv[]) {
 	SDL_Vulkan_GetDrawableSize(pWindow, &width, &height);
 	pRenderer->windowInit(surface, width, height);
 
-	CameraController *pCameraController = new CameraController();
-	pCameraController->setCamera(pRenderer->getCamera());
-	pCameraController->setPosition(glm::vec3(0.0, 2.0, 0.5));
-
-	State *pState = new State();
-	pState->pRenderer = pRenderer;
-	pState->pCameraController = pCameraController;
-
-	run(pState, pWindow);
+	run(pWindow, pRenderer);
 
 	free(pRenderer);
 
