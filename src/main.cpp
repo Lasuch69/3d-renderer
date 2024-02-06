@@ -12,6 +12,7 @@
 #include "camera_controller.h"
 #include "loader.h"
 #include "rendering/renderer.h"
+#include "time.h"
 
 const uint32_t WIDTH = 800;
 const uint32_t HEIGHT = 600;
@@ -65,11 +66,12 @@ int run(State *pState, SDL_Window *pWindow) {
 
 	int resetCursor = false;
 
-	while (!quit) {
-		last = now;
-		now = SDL_GetPerformanceCounter();
+	Time *pTime = new Time();
 
-		deltaTime = (double)((now - last) / (double)SDL_GetPerformanceFrequency());
+	while (!quit) {
+		pTime->startNewFrame();
+
+		double deltaTime = pTime->getDeltaTime();
 
 		SDL_Event event;
 		while (SDL_PollEvent(&event)) {
