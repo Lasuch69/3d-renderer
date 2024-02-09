@@ -51,10 +51,6 @@ int run(SDL_Window *pWindow, Renderer *pRenderer) {
 	Image image = Loader::load_image("textures/raw_plank_wall_diff_1k.png");
 	Texture texture = pRenderer->textureCreate(image.width, image.height, image.format, image.data);
 
-	RID object = pRenderer->objectCreate();
-	pRenderer->objectSetMesh(object, &mesh);
-	pRenderer->objectSetTransform(object, glm::mat4(1.0));
-
 	bool quit = false;
 
 	int resetCursor = false;
@@ -143,11 +139,14 @@ int run(SDL_Window *pWindow, Renderer *pRenderer) {
 
 		ImGui::Render();
 
-		pRenderer->draw();
+		pRenderer->drawBegin();
+
+		pRenderer->drawMesh(&mesh, glm::mat4(1.0f));
+
+		pRenderer->drawEnd();
 	}
 
 	pRenderer->waitIdle();
-	pRenderer->objectFree(object);
 
 	free(pCameraController);
 	free(pTime);

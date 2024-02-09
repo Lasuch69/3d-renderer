@@ -740,49 +740,6 @@ void Renderer::_endSingleTimeCommands(VkCommandBuffer commandBuffer) {
 	vkFreeCommandBuffers(_context->getDevice(), _context->getCommandPool(), 1, &commandBuffer);
 }
 
-void Renderer::_drawObjects(VkCommandBuffer commandBuffer) {
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _material.pipeline);
-
-	VkExtent2D extent = _context->getSwapchainExtent();
-
-	VkViewport viewport{};
-	viewport.x = 0.0f;
-	viewport.y = 0.0f;
-	viewport.width = (float)extent.width;
-	viewport.height = (float)extent.height;
-	viewport.minDepth = 0.0f;
-	viewport.maxDepth = 1.0f;
-	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
-
-	VkRect2D scissor{};
-	scissor.offset = { 0, 0 };
-	scissor.extent = extent;
-	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
-
-	for (auto iter = _objects.begin(); iter != _objects.end(); ++iter) {
-		Object object = iter->second;
-
-		MeshPushConstants constants;
-		constants.model = object.transform;
-
-		// upload the mesh to the gpu via pushconstants
-		vkCmdPushConstants(commandBuffer, _material.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
-
-		// bind the mesh vertex buffer with offset 0
-		VkDeviceSize offset = 0;
-		vkCmdBindVertexBuffers(commandBuffer, 0, 1, &object.pMesh->vertexBuffer.buffer, &offset);
-
-		// bind descriptors
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _material.pipelineLayout, 0, 1, &_uniformSets[_currentFrame], 0, nullptr);
-		vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _material.pipelineLayout, 1, 1, &_material.textureSet, 0, nullptr);
-
-		// bind index buffer
-		vkCmdBindIndexBuffer(commandBuffer, object.pMesh->indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
-
-		vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(object.pMesh->indices.size()), 1, 0, 0, 0);
-	}
-}
-
 VkInstance Renderer::getInstance() {
 	return _context->getInstance();
 }
@@ -804,51 +761,6 @@ void Renderer::windowResize(uint32_t width, uint32_t height) {
 	_context->windowResize(width, height);
 }
 
-RID Renderer::objectCreate() {
-	RID rid = _objectIdx;
-	_objectIdx += 1;
-
-	_objects[rid] = {};
-	return rid;
-}
-
-void Renderer::objectSetMesh(RID object, Mesh *pMesh) {
-	auto iter = _objects.find(object);
-	if (iter == _objects.end()) {
-		return;
-	}
-
-	Object *pObject;
-	pObject = &(*iter).second;
-	pObject->pMesh = pMesh;
-}
-
-void Renderer::objectSetTexture(RID object, Texture *pTexture) {
-	auto iter = _objects.find(object);
-	if (iter == _objects.end()) {
-		return;
-	}
-
-	Object *pObject;
-	pObject = &(*iter).second;
-	pObject->pTexture = pTexture;
-}
-
-void Renderer::objectSetTransform(RID object, const glm::mat4 &transform) {
-	auto iter = _objects.find(object);
-	if (iter == _objects.end()) {
-		return;
-	}
-
-	Object *pObject;
-	pObject = &(*iter).second;
-	pObject->transform = transform;
-}
-
-void Renderer::objectFree(RID object) {
-	_objects.erase(object);
-}
-
 Mesh Renderer::meshCreate(std::vector<Vertex> vertices, std::vector<uint32_t> indices) {
 	Mesh mesh = {};
 
@@ -868,7 +780,7 @@ Texture Renderer::textureCreate(uint32_t width, uint32_t height, VkFormat format
 	return texture;
 }
 
-void Renderer::draw() {
+void Renderer::drawBegin() {
 	SyncObject sync = _context->getSyncObject(_currentFrame);
 	VkCommandBuffer commandBuffer = _commandBuffers[_currentFrame];
 
@@ -914,14 +826,55 @@ void Renderer::draw() {
 
 	vkCmdBeginRenderPass(commandBuffer, &renderPassInfo, VK_SUBPASS_CONTENTS_INLINE);
 
-	_drawObjects(commandBuffer);
+	VkExtent2D extent = _context->getSwapchainExtent();
+
+	VkViewport viewport{};
+	viewport.x = 0.0f;
+	viewport.y = 0.0f;
+	viewport.width = (float)extent.width;
+	viewport.height = (float)extent.height;
+	viewport.minDepth = 0.0f;
+	viewport.maxDepth = 1.0f;
+
+	VkRect2D scissor{};
+	scissor.offset = { 0, 0 };
+	scissor.extent = extent;
+
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _material.pipeline);
+
+	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
+	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
+
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _material.pipelineLayout, 0, 1, &_uniformSets[_currentFrame], 0, nullptr);
+	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _material.pipelineLayout, 1, 1, &_material.textureSet, 0, nullptr);
+
+	_renderHandle = new RenderHandle;
+	_renderHandle->commandBuffer = commandBuffer;
+	_renderHandle->imageIndex = imageIndex;
+}
+
+void Renderer::drawMesh(Mesh *pMesh, const glm::mat4 &transform) {
+	VkCommandBuffer commandBuffer = _renderHandle->commandBuffer;
+
+	MeshPushConstants constants;
+	constants.model = transform;
+
+	vkCmdPushConstants(commandBuffer, _material.pipelineLayout, VK_SHADER_STAGE_VERTEX_BIT, 0, sizeof(MeshPushConstants), &constants);
+
+	VkDeviceSize offset = 0;
+	vkCmdBindVertexBuffers(commandBuffer, 0, 1, &pMesh->vertexBuffer.buffer, &offset);
+	vkCmdBindIndexBuffer(commandBuffer, pMesh->indexBuffer.buffer, 0, VK_INDEX_TYPE_UINT32);
+	vkCmdDrawIndexed(commandBuffer, static_cast<uint32_t>(pMesh->indices.size()), 1, 0, 0, 0);
+}
+
+void Renderer::drawEnd() {
+	VkCommandBuffer commandBuffer = _renderHandle->commandBuffer;
+	uint32_t imageIndex = _renderHandle->imageIndex;
 
 	ImGui_ImplVulkan_RenderDrawData(ImGui::GetDrawData(), commandBuffer);
 
 	// Tonemapping
 	vkCmdNextSubpass(commandBuffer, VK_SUBPASS_CONTENTS_INLINE);
-
-	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _tonemapping.pipeline);
 
 	VkExtent2D extent = _context->getSwapchainExtent();
 
@@ -932,15 +885,17 @@ void Renderer::draw() {
 	viewport.height = (float)extent.height;
 	viewport.minDepth = 0.0f;
 	viewport.maxDepth = 1.0f;
-	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 
 	VkRect2D scissor{};
 	scissor.offset = { 0, 0 };
 	scissor.extent = extent;
+
+	vkCmdBindPipeline(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _tonemapping.pipeline);
+
+	vkCmdSetViewport(commandBuffer, 0, 1, &viewport);
 	vkCmdSetScissor(commandBuffer, 0, 1, &scissor);
 
 	vkCmdBindDescriptorSets(commandBuffer, VK_PIPELINE_BIND_POINT_GRAPHICS, _tonemapping.pipelineLayout, 0, 1, &_subpassSet, 0, nullptr);
-
 	vkCmdDraw(commandBuffer, 3, 1, 0, 0);
 
 	vkCmdEndRenderPass(commandBuffer);
@@ -950,6 +905,8 @@ void Renderer::draw() {
 	_context->submit(_currentFrame, imageIndex, commandBuffer);
 
 	_currentFrame = (_currentFrame + 1) % MAX_FRAMES_IN_FLIGHT;
+
+	free(_renderHandle);
 }
 
 void Renderer::waitIdle() {

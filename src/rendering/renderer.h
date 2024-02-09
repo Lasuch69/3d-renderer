@@ -2,7 +2,6 @@
 #define RENDERER_H
 
 #include <cstdint>
-#include <unordered_map>
 
 #include <imgui.h>
 
@@ -44,15 +43,6 @@ struct Material {
 	VkPipeline pipeline;
 };
 
-struct Object {
-	Mesh *pMesh;
-	Texture *pTexture;
-
-	glm::mat4 transform;
-};
-
-typedef uint64_t RID;
-
 class Renderer {
 	VulkanContext *_context;
 	uint32_t _currentFrame = 0;
@@ -78,8 +68,12 @@ class Renderer {
 	VkDescriptorSet _subpassSet;
 	Material _tonemapping;
 
-	std::unordered_map<RID, Object> _objects;
-	uint64_t _objectIdx = 0;
+	typedef struct {
+		VkCommandBuffer commandBuffer;
+		uint32_t imageIndex;
+	} RenderHandle;
+
+	RenderHandle *_renderHandle = nullptr;
 
 	void _initAllocator();
 	void _initCommands();
@@ -107,8 +101,6 @@ class Renderer {
 	VkCommandBuffer _beginSingleTimeCommands();
 	void _endSingleTimeCommands(VkCommandBuffer commandBuffer);
 
-	void _drawObjects(VkCommandBuffer commandBuffer);
-
 public:
 	VkInstance getInstance();
 	Camera *getCamera();
@@ -118,16 +110,13 @@ public:
 
 	void initImGui();
 
-	RID objectCreate();
-	void objectSetMesh(RID object, Mesh *pMesh);
-	void objectSetTexture(RID object, Texture *pTexture);
-	void objectSetTransform(RID object, const glm::mat4 &transform);
-	void objectFree(RID object);
-
 	Mesh meshCreate(std::vector<Vertex> vertices, std::vector<uint32_t> indices);
 	Texture textureCreate(uint32_t width, uint32_t height, VkFormat format, const std::vector<uint8_t> &data);
 
-	void draw();
+	void drawBegin();
+	void drawMesh(Mesh *pMesh, const glm::mat4 &transform);
+	void drawEnd();
+
 	void waitIdle();
 
 	Renderer(std::vector<const char *> extensions, bool useValidation);
